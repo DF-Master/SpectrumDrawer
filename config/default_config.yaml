@@ -1,0 +1,119 @@
+# SpectrumDrawer Default Configuration
+# CLI arguments override values in this file.
+
+# ── Figure Layout ──
+figure:
+  dpi: 300
+  width_inches: 10.0
+  height_inches: 4.7
+  facecolor: 'white'
+  # GridSpec: left, right, top, bottom margins (0.0-1.0)
+  left_margin: 0.07
+  right_margin: 0.97
+  top_margin: 0.94
+  bottom_margin: 0.10
+  # Panel height ratios (ladder:spectrum:error)
+  height_ratios: [0.9, 1.3, 0.40]
+  hspace: 0.30
+
+# ── Sequence Ladder Panel ──
+ladder:
+  ylim: [-3.0, 5.0]
+  # Position of first residue in m/z space (fraction of x_range from xmin)
+  first_x_fraction: 0.04
+  spacing_fraction: 0.04
+  tick_len_fraction: 0.14 # relative to spacing
+  seq_y: 0.0
+  b_ion_drop: 1.0
+  y_ion_rise: 1.0
+  clv_b_offset: 0.4 # extra offset below regular b brackets for cleavable b[lc/sc]
+  clv_y_offset: 0.4 # extra offset above regular y brackets for cleavable y[lc/sc]
+  clv_gap: 1.0 # gap past middle labels where outer bracket vertical starts
+  residue_fontsize: 16
+  ion_label_fontsize: 8
+  charge_label_fontsize: 11
+  charge_label_color: '#555555'
+  residue_color: '#111111'
+  mod_residue_color: '#CC0033'
+  xlink_ring_size: 20
+  xlink_ring_width: 2.2
+  show_loop_arc: false # draw loop-link arc connecting crosslink sites
+
+# ── Spectrum Panel ──
+spectrum:
+  ylim_factor: 1.25 # ylim = 100 * ylim_factor
+  peak_linewidth: 0.5
+  match_linewidth: 2.8
+  ion_label_fontsize: 9
+  ion_label_rotation: 90
+  tick_label_fontsize: 9
+  spine_width: 0.8
+
+# ── Mass Error Panel ──
+mass_error:
+  ylim: [-21, 21]
+  scatter_size: 25
+  scatter_linewidth: 0.3
+  xlabel_fontsize: 13
+  ylabel_fontsize: 11
+  ytick_labelsize: 8
+  xtick_labelsize: 8
+  spine_width: 0.8
+  reference_line_width: 0.8
+  tol_line_width: 0.5
+
+# ── Y-axis Labels (figure-level text) ──
+y_labels:
+  x_position: 0.025
+  intensity_label: 'Rel. int. (%)'
+  error_label: "\u0394 (ppm)"
+  fontsize: 12
+
+# ── Title / Metadata ──
+title:
+  spec_name_fontsize: 9.5
+  spec_name_color: '#333333'
+  meta_fontsize: 9.5
+  meta_color: '#000000'
+
+# ── Colors ──
+colors:
+  b_ion: '#006400'
+  y_ion: '#CC0033'
+  cleavable_ion_lc: '#6A0DAD'
+  cleavable_ion_sc: '#C77DFF'
+  intact_precursor: '#444444'
+  chain_label: '#555555'
+  unmatched_peak: '#808080'
+  mod_highlight: '#CC0033'
+  frame: '#333333'
+  tol_line: '#CCCCCC'
+  tol_minor_line: '#DDDDDD'
+
+# ── Spectrum Processing ──
+processing:
+  tol_ppm: 20.0
+  ion_types: 'by'
+  max_charge: 2
+  min_relative_intensity: 0.1 # filter peaks below this % intensity
+
+# ── spectrum_utils ──
+# If spectrum_utils is not installed as a package, set its path here
+spectrum_utils_path: ''
+
+# ── Default Crosslinker ──
+crosslinker:
+  default_name: 'BS3'
+  mono_mass: 156.079
+
+# ── Default Modifications ──
+# Full names must match entries in database/modification.ini
+# Fixed: applied automatically to every residue of the specified type.
+#   (e.g. Carbamidomethyl is added to every C in the sequence)
+# Variable: reserved interface for future use.  Populate this list to enable
+#   config-driven variable-mod matching (currently unused — variable mods
+#   are auto-detected from the identification data instead).
+modifications:
+  fixed:
+    - 'Carbamidomethyl[C]'
+  variable: []

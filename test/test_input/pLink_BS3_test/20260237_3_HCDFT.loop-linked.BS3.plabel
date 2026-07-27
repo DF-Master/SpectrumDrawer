@@ -1,0 +1,24 @@
+[FilePath]
+File_Path=D:\MSdata\260407-LaiLAB-ZSC\raw\20260237_3_HCDFT.pf2
+[Modification]
+1=Oxidation[M]
+2=Carbamidomethyl[C]
+[xlink]
+xlink=BS3
+[Total]
+total=5
+[Spectrum1]
+name=20260237_3.47178.47178.3.0.DTA
+pep1=2 1 5 KEASKQADVNLVNAK 1 
+[Spectrum2]
+name=20260237_3.54819.54819.3.0.DTA
+pep1=2 2 6 LKEASKQADVNLVNAK 1 
+[Spectrum3]
+name=20260237_3.47211.47211.3.0.DTA
+pep1=2 1 5 KEASKQADVNLVNAK 1 
+[Spectrum4]
+name=20260237_3.63782.63782.3.0.DTA
+pep1=2 10 13 QIPQATASMKDGKWER 1 
+[Spectrum5]
+name=20260237_3.47117.47117.3.0.DTA
+pep1=2 1 5 KEASKQADVNLVNAK 1 

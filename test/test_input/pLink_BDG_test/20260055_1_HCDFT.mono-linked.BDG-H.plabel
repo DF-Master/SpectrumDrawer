@@ -1,0 +1,48 @@
+[FilePath]
+File_Path=D:\MSdata\260202-LaiLAB-ZSC\raw\20260055_1_HCDFT.pf2
+[Modification]
+1=Oxidation[M]
+2=BDG_ADP_innersasz
+3=BDG_AMP_innersasz
+4=BDG_ATP_innersasz
+5=BDG_mono_innersasz
+6=BDG_NAD_innersasz
+7=BDG_NADH_innersasz
+8=BDG_NMN_innersasz
+9=BDG_NMNH_innersasz
+10=BDG_PEP_innersasz
+11=BDG_PGA_innersasz
+12=BDG_Pi_innersasz
+13=BDG_PPi_innersasz
+14=Carbamidomethyl[C]
+[xlink]
+xlink=BDG-H
+[Total]
+total=9
+[Spectrum1]
+name=20260055_1.86959.86959.3.4.DTA
+pep1=1 7 SPEVSASF 1 1,12 5,10 
+[Spectrum2]
+name=20260055_1.57728.57728.3.1.DTA
+pep1=1 7 QTSLVSDGETW 1 6,11 9,12 10,12 
+[Spectrum3]
+name=20260055_1.80527.80527.4.3.DTA
+pep1=1 11 EELIAELQDCEGLIVR 1 10,14 2,10 
+[Spectrum4]
+name=20260055_1.57689.57689.3.2.DTA
+pep1=1 7 QTSLVSDGETWHVMGISSLLPSL 1 14,1 17,3 18,13 
+[Spectrum5]
+name=20260055_1.43402.43402.4.1.DTA
+pep1=1 1 EELIAELQDCEGLIVR 1 10,14 6,9 
+[Spectrum6]
+name=20260055_1.30369.30369.2.0.DTA
+pep1=1 5 LNDNTF 1 3,11 
+[Spectrum7]
+name=20260055_1.87097.87097.2.0.DTA
+pep1=1 5 SPEVSASF 1 7,5 
+[Spectrum8]
+name=20260055_1.30369.30369.2.1.DTA
+pep1=1 5 LNDNTF 1 3,10 
+[Spectrum9]
+name=20260055_1.90570.90570.2.1.DTA
+pep1=1 6 SSLLPSLEAW 1 1,12 

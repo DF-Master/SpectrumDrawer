@@ -61,26 +61,33 @@ def build_fragment_status(matches: List[MatchResult]
     dict
         {frag_name: ion_type}, where frag_name has charge suffix removed.
         Cleavable ions are tagged with 'lc'/'sc' suffixes, e.g. 'b3[lc]' -> 'blc'.
+        Neutral-loss ions retain a trailing ``*``, e.g. 'b3*' -> 'b', 'b3[lc]*' -> 'blc'.
     """
     fstat = {}
     for m in matches:
-        frag_name = m[0].rsplit('+', 1)[0]
+        full_name = m[0]
+        is_nl = full_name.endswith('*')
+        base_name = full_name[:-1] if is_nl else full_name
+        frag_name = base_name.rsplit('+', 1)[0]
+        # Append * if it was a neutral-loss ion
+        key_suffix = '*' if is_nl else ''
+
         if '[lc]' in frag_name:
             base = frag_name.replace('[lc]', '')
             if base.startswith('b'):
-                fstat[frag_name] = 'blc'
+                fstat[frag_name + key_suffix] = 'blc'
             elif base.startswith('y'):
-                fstat[frag_name] = 'ylc'
+                fstat[frag_name + key_suffix] = 'ylc'
         elif '[sc]' in frag_name:
             base = frag_name.replace('[sc]', '')
             if base.startswith('b'):
-                fstat[frag_name] = 'bsc'
+                fstat[frag_name + key_suffix] = 'bsc'
             elif base.startswith('y'):
-                fstat[frag_name] = 'ysc'
+                fstat[frag_name + key_suffix] = 'ysc'
         elif frag_name.startswith('b'):
-            fstat[frag_name] = 'b'
+            fstat[frag_name + key_suffix] = 'b'
         elif frag_name.startswith('y'):
-            fstat[frag_name] = 'y'
+            fstat[frag_name + key_suffix] = 'y'
 
     return fstat
 
@@ -89,12 +96,15 @@ def count_coverage(fstat: Dict[str, str],
                    seq_len: int) -> Tuple[int, int, int, int]:
     """Count b/y ion coverage.
 
+    Neutral-loss ions (``*`` suffix) are treated as their base ion type
+    for coverage counting — e.g. ``b3*`` and ``b3`` count as one position.
+
     Returns
     -------
     b_count, y_count, b_possible, y_possible
     """
-    b_count = sum(1 for k in fstat if k.startswith('b'))
-    y_count = sum(1 for k in fstat if k.startswith('y'))
+    b_count = len({k.rstrip('*') for k in fstat if k.startswith('b')})
+    y_count = len({k.rstrip('*') for k in fstat if k.startswith('y')})
     b_possible = seq_len - 1
     y_possible = seq_len - 1
     return b_count, y_count, b_possible, y_possible

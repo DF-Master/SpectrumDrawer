@@ -116,6 +116,67 @@ def build_mod_dict_from_identification(ident: Identification,
     return mods_dict, mod_show
 
 
+def get_nl_info_from_identification(ident: Identification,
+                                     mods_dict: Dict[int, float]
+                                     ) -> Dict[int, list]:
+    """Collect neutral loss information for all modifications in an identification.
+
+    Looks up each variable modification and the crosslinker modification
+    (for mono/loop-link) in ``modification.ini``.  If a modification has
+    ``neutral_losses`` defined, they are recorded per position.
+
+    Parameters
+    ----------
+    ident : Identification
+    mods_dict : dict
+        {1-based position: mass_delta}.
+
+    Returns
+    -------
+    dict
+        {1-based position: [nl_mass1, nl_mass2, ...]}.
+        Only positions with at least one neutral loss are included.
+    """
+    from ..database.ini_loader import get_mod_data
+    mod_data = get_mod_data()
+    nl_info: Dict[int, list] = {}
+
+    # Variable modifications
+    varmods = ident.get_alpha_varmod_list()
+    for mod_type, pos in varmods:
+        if mod_type in mod_data and mod_data[mod_type].get('neutral_losses'):
+            nl_info[pos] = list(mod_data[mod_type]['neutral_losses'])
+
+    # Crosslinker modification (mono/loop-link)
+    if ident.is_mono and ident.alpha_xlink_site > 0:
+        site = ident.alpha_xlink_site
+        # Check if the linker has an entry in modification.ini
+        linker = ident.linker_name
+        if linker and linker in mod_data and mod_data[linker].get('neutral_losses'):
+            if site not in nl_info:
+                nl_info[site] = []
+            # Avoid duplicates (a var-mod and linker might share the same site)
+            existing = set(nl_info[site])
+            for nl_mass in mod_data[linker]['neutral_losses']:
+                if nl_mass not in existing:
+                    nl_info[site].append(nl_mass)
+                    existing.add(nl_mass)
+
+    if ident.is_loop and ident.alpha_xlink_site > 0 and ident.beta_xlink_site > 0:
+        site = ident.alpha_xlink_site
+        linker = ident.linker_name
+        if linker and linker in mod_data and mod_data[linker].get('neutral_losses'):
+            if site not in nl_info:
+                nl_info[site] = []
+            existing = set(nl_info[site])
+            for nl_mass in mod_data[linker]['neutral_losses']:
+                if nl_mass not in existing:
+                    nl_info[site].append(nl_mass)
+                    existing.add(nl_mass)
+
+    return nl_info
+
+
 def _abbreviate_mod_name(mod_full_name: str) -> str:
     """Generate abbreviation from a modification full name.
 

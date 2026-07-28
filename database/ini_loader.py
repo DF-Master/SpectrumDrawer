@@ -116,12 +116,21 @@ def parse_modification_ini(path=None):
             residues = parts[0]
             mod_type = parts[1]  # NORMAL, PEP_N, PEP_C, PRO_N, PRO_C
             mass = float(parts[2])
-            # parts[3] is neutral loss mass (same as mass for most)
             nl_count = int(parts[4])  # number of neutral losses
-            # Parse composition if present
+
+            # Extract neutral loss masses (each appears twice in the file,
+            # take only the first occurrence of each pair)
+            neutral_losses = []
+            for i in range(nl_count):
+                idx = 5 + 2 * i
+                if idx < len(parts):
+                    neutral_losses.append(float(parts[idx]))
+
+            # Parse composition after neutral loss entries
             composition = {}
-            if len(parts) > 5:
-                comp_str = parts[5]
+            comp_start = 5 + nl_count * 2
+            if len(parts) > comp_start:
+                comp_str = parts[comp_start]
                 for cm in re.finditer(r'(\d*[A-Z][a-z]?)\((-?\d+)\)', comp_str):
                     elem = cm.group(1)
                     count = int(cm.group(2))
@@ -131,6 +140,7 @@ def parse_modification_ini(path=None):
                 'residues': residues,
                 'type': mod_type,
                 'mass': mass,
+                'neutral_losses': neutral_losses,
                 'composition': composition,
             }
     return result

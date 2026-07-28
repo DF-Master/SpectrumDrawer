@@ -69,12 +69,16 @@ def draw_spectrum_panel(ax, spec, reg_matches: List[MatchResult],
 
     for r in all_matches:
         name, theo_mz, obs_mz, intensity, ppm = r
-        parts = name.split('+')
-        charge_str = parts[-1] if parts[-1].isdigit() else '1'
+        # Handle neutral-loss * suffix
+        is_nl = name.endswith('*')
+        clean_name = name[:-1] if is_nl else name
+        parts = clean_name.split('+')
+        charge_str = parts[-1] if len(parts) > 1 and parts[-1].isdigit() else '1'
         simple = '+'.join(parts[:-1]) if len(parts) > 1 else parts[0]
         z = int(charge_str)
         ch = '+' * z
-        label = f'{simple}{ch}'
+        nl_mark = '*' if is_nl else ''
+        label = f'{simple}{ch}{nl_mark}'
         if '[lc]' in name:
             color = c_clv_lc
         elif '[sc]' in name:

@@ -13,6 +13,8 @@ from ..utils import (
     count_coverage, build_proforma, build_mod_dict_from_identification,
     build_meta_string, calc_cleavable_frags, deduplicate_frags,
     calc_precursor_mz,
+    calc_neutral_loss_frags, calc_neutral_loss_cleavable_frags,
+    get_nl_info_from_identification,
 )
 from .ladder_panel import draw_ladder_panel
 from .spectrum_panel import draw_spectrum_panel
@@ -99,8 +101,45 @@ class FigureComposer:
                         spectrum.mz, spectrum.intensity, unique_clv, tol_ppm
                     )
 
+        # Calculate neutral-loss ions if any modification has neutral losses
+        nl_info = get_nl_info_from_identification(ident, mods_dict)
+        nl_matches = []
+        if nl_info:
+            # Standard b/y ions with neutral loss
+            nl_frags = calc_neutral_loss_frags(
+                ident.alpha_seq, mods_dict, nl_info, ion_types, max_charge,
+            )
+            if nl_frags:
+                unique_nl = deduplicate_frags(theo_frags, nl_frags,
+                                              tol_ppm=tol_ppm)
+                if unique_nl:
+                    nl_matches = match_fragments(
+                        spectrum.mz, spectrum.intensity, unique_nl, tol_ppm,
+                    )
+
+            # Cleavable b/y[lc/sc] ions with neutral loss
+            if is_cleavable and (ident.is_mono or ident.is_loop):
+                crosslink_site = (ident.alpha_xlink_site
+                                  if ident.alpha_xlink_site > 0 else 0)
+                nl_clv_frags = calc_neutral_loss_cleavable_frags(
+                    ident.alpha_seq, crosslink_site, mods_dict, nl_info,
+                    long_arm_mass, short_arm_mass, ion_types, max_charge,
+                )
+                if nl_clv_frags:
+                    # Deduplicate against standard + standard-NL frags
+                    existing = dict(theo_frags)
+                    existing.update(nl_frags)
+                    unique_nl_clv = deduplicate_frags(existing, nl_clv_frags,
+                                                      tol_ppm=tol_ppm)
+                    if unique_nl_clv:
+                        nl_clv_matches = match_fragments(
+                            spectrum.mz, spectrum.intensity,
+                            unique_nl_clv, tol_ppm,
+                        )
+                        nl_matches.extend(nl_clv_matches)
+
         # Combine standard and cleavable matches for fstat
-        all_matches = matches + clv_matches
+        all_matches = matches + clv_matches + nl_matches
 
         # Build fragment status
         fstat = build_fragment_status(all_matches)
@@ -113,7 +152,8 @@ class FigureComposer:
         # Build intact precursor m/z matches
         precursor_matches = _build_precursor_matches(
             ident, mods_dict, spectrum,
-            is_cleavable, long_arm_mass, short_arm_mass, tol_ppm
+            is_cleavable, long_arm_mass, short_arm_mass, tol_ppm,
+            nl_info=nl_info, max_charge=max_charge,
         )
 
         # X-axis range (shared across panels)
@@ -246,11 +286,17 @@ def _build_precursor_matches(ident: Identification,
                               is_cleavable: bool,
                               long_arm_mass: float,
                               short_arm_mass: float,
-                              tol_ppm: float) -> list:
+                              tol_ppm: float,
+                              nl_info: dict = None,
+                              max_charge: int = 2) -> list:
     """Match theoretical precursor m/z against observed spectrum peaks.
 
+    Searches the identified charge state plus all charge states
+    1 .. ``max_charge``.  Neutral-loss variants (α*, α[lc]*, α[sc]*)
+    are also searched when ``nl_info`` contains neutral loss masses.
+
     Returns a list of (label, obs_mz, intensity_norm, ppm) tuples.
-    Intensity is normalized to 0-100 scale.
+    Intensity is normalized to 0-100 scale.  Labels include charge.
     """
     results = []
 
@@ -265,31 +311,75 @@ def _build_precursor_matches(ident: Identification,
             return (label, obs_mz, int_norm, ppm)
         return None
 
-    # α (full precursor)
-    alpha_mz = calc_precursor_mz(ident.alpha_seq, mods_dict, ident.charge)
-    m = _match_one(alpha_mz, '\u03b1')
-    if m:
-        results.append(m)
+    # Charge states: identified charge always searched, plus 1..max_charge
+    charges = [ident.charge] + [z for z in range(1, max_charge + 1)
+                                if z != ident.charge]
 
-    # α[lc] and α[sc] for cleavable crosslinkers on mono/loop-link
-    if is_cleavable and (ident.is_mono or ident.is_loop):
-        site = ident.alpha_xlink_site if ident.alpha_xlink_site > 0 else 0
-        full_mass = mods_dict.get(site, 0.0)
+    for z in charges:
+        ch = '+' * z
 
-        if site > 0 and long_arm_mass != full_mass:
-            lc_mods = dict(mods_dict)
-            lc_mods[site] = long_arm_mass
-            lc_mz = calc_precursor_mz(ident.alpha_seq, lc_mods, ident.charge)
-            m = _match_one(lc_mz, '\u03b1[lc]')
-            if m:
-                results.append(m)
+        # α (full precursor)
+        alpha_mz = calc_precursor_mz(ident.alpha_seq, mods_dict, z)
+        m = _match_one(alpha_mz, f'\u03b1{ch}')
+        if m:
+            results.append(m)
 
-        if site > 0 and short_arm_mass != full_mass:
-            sc_mods = dict(mods_dict)
-            sc_mods[site] = short_arm_mass
-            sc_mz = calc_precursor_mz(ident.alpha_seq, sc_mods, ident.charge)
-            m = _match_one(sc_mz, '\u03b1[sc]')
-            if m:
-                results.append(m)
+        # α[lc] and α[sc] for cleavable crosslinkers on mono/loop-link
+        if is_cleavable and (ident.is_mono or ident.is_loop):
+            site = ident.alpha_xlink_site if ident.alpha_xlink_site > 0 else 0
+            full_mass = mods_dict.get(site, 0.0)
+
+            if site > 0 and long_arm_mass != full_mass:
+                lc_mods = dict(mods_dict)
+                lc_mods[site] = long_arm_mass
+                lc_mz = calc_precursor_mz(ident.alpha_seq, lc_mods, z)
+                m = _match_one(lc_mz, f'\u03b1[lc]{ch}')
+                if m:
+                    results.append(m)
+
+            if site > 0 and short_arm_mass != full_mass:
+                sc_mods = dict(mods_dict)
+                sc_mods[site] = short_arm_mass
+                sc_mz = calc_precursor_mz(ident.alpha_seq, sc_mods, z)
+                m = _match_one(sc_mz, f'\u03b1[sc]{ch}')
+                if m:
+                    results.append(m)
+
+        # Neutral-loss variants: α*, α[lc]*, α[sc]*
+        if nl_info:
+            for pos, nl_masses in nl_info.items():
+                if pos not in mods_dict:
+                    continue
+                orig_mass = mods_dict[pos]
+                for nl_mass in nl_masses:
+                    alt_mods = dict(mods_dict)
+                    alt_mods[pos] = orig_mass - nl_mass
+                    nl_mz = calc_precursor_mz(ident.alpha_seq, alt_mods, z)
+                    m = _match_one(nl_mz, f'\u03b1{ch}*')
+                    if m:
+                        results.append(m)
+
+            # NL for cleavable arm precursors
+            if is_cleavable and (ident.is_mono or ident.is_loop):
+                crosslink_site = (ident.alpha_xlink_site
+                                  if ident.alpha_xlink_site > 0 else 0)
+                if crosslink_site in nl_info:
+                    full_mass = mods_dict.get(crosslink_site, 0.0)
+                    nl_masses_clv = nl_info[crosslink_site]
+                    for nl_mass in nl_masses_clv:
+                        if site > 0 and long_arm_mass != full_mass:
+                            lc_mods = dict(mods_dict)
+                            lc_mods[site] = long_arm_mass - nl_mass
+                            lc_mz = calc_precursor_mz(ident.alpha_seq, lc_mods, z)
+                            m = _match_one(lc_mz, f'\u03b1[lc]{ch}*')
+                            if m:
+                                results.append(m)
+                        if site > 0 and short_arm_mass != full_mass:
+                            sc_mods = dict(mods_dict)
+                            sc_mods[site] = short_arm_mass - nl_mass
+                            sc_mz = calc_precursor_mz(ident.alpha_seq, sc_mods, z)
+                            m = _match_one(sc_mz, f'\u03b1[sc]{ch}*')
+                            if m:
+                                results.append(m)
 
     return results

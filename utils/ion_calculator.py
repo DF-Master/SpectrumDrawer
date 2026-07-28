@@ -195,6 +195,104 @@ def calc_precursor_mz(seq: str, mods_dict: Dict[int, float],
     return (total + charge * PROTON) / charge
 
 
+def calc_neutral_loss_frags(seq: str, mods_dict: Dict[int, float],
+                            nl_info: Dict[int, list],
+                            ion_types: str = 'by',
+                            max_charge: int = 2) -> Dict[str, float]:
+    """Calculate b/y ions with neutral loss modifications.
+
+    For each position that has a modification with neutral loss(es),
+    generates alternative fragment ions where the modification mass is
+    reduced by the neutral loss mass.  Ions are suffixed with ``*``
+    to distinguish them from standard ions.
+
+    Parameters
+    ----------
+    seq : str
+        Amino acid sequence.
+    mods_dict : dict
+        {1-based position: mass_delta} for standard modifications.
+    nl_info : dict
+        {1-based position: [nl_mass1, nl_mass2, ...]}.
+    ion_types : str
+        Which ion types to calculate.
+    max_charge : int
+        Maximum charge state.
+
+    Returns
+    -------
+    dict
+        {frag_name*: m/z}, e.g. 'b3+1*', 'y5+2*'.
+    """
+    frags = {}
+    for pos, nl_masses in nl_info.items():
+        if pos not in mods_dict:
+            continue
+        orig_mass = mods_dict[pos]
+        for nl_mass in nl_masses:
+            alt_mods = dict(mods_dict)
+            alt_mods[pos] = orig_mass - nl_mass
+            alt_frags = calc_theoretical_frags(seq, alt_mods, ion_types, max_charge)
+            for k, v in alt_frags.items():
+                frags[k + '*'] = v
+    return frags
+
+
+def calc_neutral_loss_cleavable_frags(seq: str, crosslink_site: int,
+                                       mods_dict: Dict[int, float],
+                                       nl_info: Dict[int, list],
+                                       long_arm_mass: float,
+                                       short_arm_mass: float,
+                                       ion_types: str = 'by',
+                                       max_charge: int = 2
+                                       ) -> Dict[str, float]:
+    """Calculate cleavable b/y ions with neutral loss at the crosslink site.
+
+    When a cleavable crosslinker modification undergoes neutral loss, both
+    the full modification mass and the arm masses are shifted by the same
+    amount.  Ions are suffixed with ``*``.
+
+    Parameters
+    ----------
+    seq : str
+        Amino acid sequence.
+    crosslink_site : int
+        1-based position of the crosslink site.
+    mods_dict : dict
+        {1-based position: mass_delta} for standard modifications.
+    nl_info : dict
+        {1-based position: [nl_mass1, nl_mass2, ...]}.
+    long_arm_mass, short_arm_mass : float
+        Cleavable crosslinker arm masses.
+
+    Returns
+    -------
+    dict
+        {frag_name*: m/z}, e.g. 'b3[lc]+1*', 'y5[sc]+2*'.
+    """
+    if crosslink_site <= 0 or crosslink_site not in nl_info:
+        return {}
+
+    full_mass = mods_dict.get(crosslink_site, 0.0)
+    nl_masses = nl_info[crosslink_site]
+    frags = {}
+
+    for nl_mass in nl_masses:
+        alt_mods = dict(mods_dict)
+        alt_mods[crosslink_site] = full_mass - nl_mass
+        alt_long = long_arm_mass - nl_mass
+        alt_short = short_arm_mass - nl_mass
+
+        clv_frags = calc_cleavable_frags(
+            seq, crosslink_site, alt_mods,
+            alt_long, alt_short, ion_types, max_charge,
+        )
+        for k, v in clv_frags.items():
+            frags[k + '*'] = v
+
+    return frags
+
+
 def deduplicate_frags(primary: Dict[str, float],
                       secondary: Dict[str, float],
                       tol_ppm: float = 5.0) -> Dict[str, float]:

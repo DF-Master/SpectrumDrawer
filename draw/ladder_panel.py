@@ -120,10 +120,24 @@ def draw_ladder_panel(ax, seq: str, fstat: Dict[str, str], charge: int,
 
     ion_fs = config.get('ion_label_fontsize', 8)
 
+    def _fstat_key_and_label(base_key: str) -> tuple:
+        """Check fstat for base_key and base_key*; return (matched_key, display_label).
+
+        Priority rules:
+        - Non-neutral-loss (no ``*``) takes priority over neutral-loss (``*``).
+        - Cleavable lc/sc priority is handled by the caller (lc > sc).
+        """
+        if base_key in fstat:
+            return base_key, base_key
+        nl_key = base_key + '*'
+        if nl_key in fstat:
+            return nl_key, base_key + '*'
+        return None, None
+
     # b-ion L-brackets (below sequence)
     for i in range(1, n):
-        fn = f'b{i}'
-        if fn not in fstat:
+        fn, label = _fstat_key_and_label(f'b{i}')
+        if fn is None:
             continue
         ion_type = fstat[fn]
         x = first_x + (i - 0.5) * spacing
@@ -133,14 +147,14 @@ def draw_ladder_panel(ax, seq: str, fstat: Dict[str, str], charge: int,
                 clip_on=False, solid_capstyle='round')
         ax.plot([x - tick_len, x], [y_bot, y_bot], color=c, lw=2.0,
                 zorder=5, clip_on=False, solid_capstyle='round')
-        ax.text(x - tick_len / 2, y_bot - 0.15, fn, ha='center', va='top',
+        ax.text(x - tick_len / 2, y_bot - 0.15, label, ha='center', va='top',
                 fontsize=ion_fs, fontweight='bold', color=c, zorder=10,
                 clip_on=False)
 
     # y-ion L-brackets (above sequence)
     for i in range(1, n):
-        fn = f'y{i}'
-        if fn not in fstat:
+        fn, label = _fstat_key_and_label(f'y{i}')
+        if fn is None:
             continue
         ion_type = fstat[fn]
         x = first_x + (n - i - 0.5) * spacing
@@ -150,21 +164,22 @@ def draw_ladder_panel(ax, seq: str, fstat: Dict[str, str], charge: int,
                 clip_on=False, solid_capstyle='round')
         ax.plot([x, x + tick_len], [y_top, y_top], color=c, lw=2.0,
                 zorder=5, clip_on=False, solid_capstyle='round')
-        ax.text(x + tick_len / 2, y_top + 0.15, fn, ha='center', va='bottom',
+        ax.text(x + tick_len / 2, y_top + 0.15, label, ha='center', va='bottom',
                 fontsize=ion_fs, fontweight='bold', color=c, zorder=10,
                 clip_on=False)
 
     # y[lc/sc] L-brackets (above regular y brackets, shorter vertical)
     for i in range(1, n):
-        key_lc = f'y{i}[lc]'
-        key_sc = f'y{i}[sc]'
-        if key_lc in fstat:
+        key_lc, label_lc = _fstat_key_and_label(f'y{i}[lc]')
+        key_sc, label_sc = _fstat_key_and_label(f'y{i}[sc]')
+        if key_lc is not None:
             color = c_clv_lc
-        elif key_sc in fstat:
+            label = label_lc
+        elif key_sc is not None:
             color = c_clv_sc
+            label = label_sc
         else:
             continue
-        label = f'y{i}'
         x = first_x + (n - i - 0.5) * spacing
         y_start = seq_y + y_rise + clv_gap   # above middle labels
         y_outer = y_start + clv_y_off
@@ -179,15 +194,16 @@ def draw_ladder_panel(ax, seq: str, fstat: Dict[str, str], charge: int,
 
     # b[lc/sc] L-brackets (below regular b brackets, shorter vertical)
     for i in range(1, n):
-        key_lc = f'b{i}[lc]'
-        key_sc = f'b{i}[sc]'
-        if key_lc in fstat:
+        key_lc, label_lc = _fstat_key_and_label(f'b{i}[lc]')
+        key_sc, label_sc = _fstat_key_and_label(f'b{i}[sc]')
+        if key_lc is not None:
             color = c_clv_lc
-        elif key_sc in fstat:
+            label = label_lc
+        elif key_sc is not None:
             color = c_clv_sc
+            label = label_sc
         else:
             continue
-        label = f'b{i}'
         x = first_x + (i - 0.5) * spacing
         y_start = seq_y - b_drop - clv_gap   # below middle labels
         y_outer = y_start - clv_b_off

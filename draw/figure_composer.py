@@ -15,7 +15,9 @@ from ..utils import (
     calc_precursor_mz,
     calc_neutral_loss_frags, calc_neutral_loss_cleavable_frags,
     get_nl_info_from_identification,
+    build_xlink_mods_dict, compute_xlink_precursor_mz,
 )
+from ..database import PROTON
 from .ladder_panel import draw_ladder_panel
 from .spectrum_panel import draw_spectrum_panel
 from .mass_error_panel import draw_mass_error_panel
@@ -38,6 +40,7 @@ class FigureComposer:
     def draw(self, spectrum: Spectrum, ident: Identification,
              out_path: str, linker_name: str = None,
              mono_mass: float = None, loop_mass: float = None,
+             linker_mass: float = None,
              is_cleavable: bool = False,
              long_arm_mass: float = 0.0,
              short_arm_mass: float = 0.0):
@@ -73,88 +76,153 @@ class FigureComposer:
             ident, mono_link_mass=mono_mass, loop_link_mass=loop_mass
         )
 
-        # Calculate theoretical fragments
-        theo_frags = calc_theoretical_frags(
-            ident.alpha_seq, mods_dict, ion_types, max_charge
-        )
+        if ident.is_xlink:
+            # ── Cross-link: build mods_dict for both chains ──
+            xlink_mass = linker_mass if linker_mass is not None else 138.068080
+            alpha_mods, alpha_show = build_xlink_mods_dict(
+                ident, 'alpha', xlink_mass)
+            beta_mods, beta_show = build_xlink_mods_dict(
+                ident, 'beta', xlink_mass)
 
-        # Match fragments
-        matches = match_fragments(
-            spectrum.mz, spectrum.intensity, theo_frags, tol_ppm
-        )
+            # Alpha chain b/y ions
+            alpha_theo = calc_theoretical_frags(
+                ident.alpha_seq, alpha_mods, ion_types, max_charge)
+            alpha_matches = match_fragments(
+                spectrum.mz, spectrum.intensity, alpha_theo, tol_ppm)
+            alpha_matches = _prefix_matches(alpha_matches, 'α')
 
-        # Calculate cleavable ions if applicable
-        clv_matches = []
-        if is_cleavable and (ident.is_mono or ident.is_loop):
-            crosslink_site = (ident.alpha_xlink_site
-                              if ident.alpha_xlink_site > 0 else 0)
-            clv_frags = calc_cleavable_frags(
-                ident.alpha_seq, crosslink_site, mods_dict,
-                long_arm_mass, short_arm_mass, ion_types, max_charge,
+            # Beta chain b/y ions
+            beta_theo = calc_theoretical_frags(
+                ident.beta_seq, beta_mods, ion_types, max_charge)
+            beta_matches = match_fragments(
+                spectrum.mz, spectrum.intensity, beta_theo, tol_ppm)
+            beta_matches = _prefix_matches(beta_matches, 'β')
+
+            # NL for both chains
+            nl_matches = []
+            # α-chain NL info (based on α's own varmods)
+            alpha_nl = _get_chain_nl_info(ident, alpha_mods, 'alpha')
+            if alpha_nl:
+                nl_frags = calc_neutral_loss_frags(
+                    ident.alpha_seq, alpha_mods, alpha_nl, ion_types, max_charge)
+                if nl_frags:
+                    unique_nl = deduplicate_frags(alpha_theo, nl_frags, tol_ppm=tol_ppm)
+                    if unique_nl:
+                        nl_m = match_fragments(
+                            spectrum.mz, spectrum.intensity, unique_nl, tol_ppm)
+                        nl_matches.extend(_prefix_matches(nl_m, 'α'))
+            # β-chain NL info
+            beta_nl = _get_chain_nl_info(ident, beta_mods, 'beta')
+            if beta_nl:
+                nl_frags = calc_neutral_loss_frags(
+                    ident.beta_seq, beta_mods, beta_nl, ion_types, max_charge)
+                if nl_frags:
+                    unique_nl = deduplicate_frags(beta_theo, nl_frags, tol_ppm=tol_ppm)
+                    if unique_nl:
+                        nl_m = match_fragments(
+                            spectrum.mz, spectrum.intensity, unique_nl, tol_ppm)
+                        nl_matches.extend(_prefix_matches(nl_m, 'β'))
+
+            all_matches = alpha_matches + beta_matches + nl_matches
+            fstat = build_fragment_status(all_matches)
+            b_p = (len(ident.alpha_seq) - 1) + (len(ident.beta_seq) - 1)
+            y_p = b_p
+            # Count b/y positions using ion_type values (αb/βb/αy/βy + lc/sc variants)
+            b_types = {'αb', 'βb', 'αblc', 'αbsc', 'βblc', 'βbsc'}
+            y_types = {'αy', 'βy', 'αylc', 'αysc', 'βylc', 'βysc'}
+            b_count = len({k.rstrip('*') for k, v in fstat.items() if v in b_types})
+            y_count = len({k.rstrip('*') for k, v in fstat.items() if v in y_types})
+
+            # Cross-link precursor matches
+            precursor_matches = _build_xlink_precursor_matches(
+                ident, xlink_mass, spectrum, tol_ppm,
+                alpha_nl=alpha_nl, beta_nl=beta_nl, max_charge=max_charge,
             )
-            if clv_frags:
-                # Deduplicate against standard fragments
-                unique_clv = deduplicate_frags(theo_frags, clv_frags,
-                                               tol_ppm=tol_ppm)
-                if unique_clv:
-                    clv_matches = match_fragments(
-                        spectrum.mz, spectrum.intensity, unique_clv, tol_ppm
-                    )
 
-        # Calculate neutral-loss ions if any modification has neutral losses
-        nl_info = get_nl_info_from_identification(ident, mods_dict)
-        nl_matches = []
-        if nl_info:
-            # Standard b/y ions with neutral loss
-            nl_frags = calc_neutral_loss_frags(
-                ident.alpha_seq, mods_dict, nl_info, ion_types, max_charge,
+            # ProForma (use α chain only for spectrum_utils annotation)
+            proforma_str = build_proforma(ident.alpha_seq, alpha_mods)
+            proforma_str += f'/{ident.charge}'
+
+        else:
+            # ── Regular / Mono / Loop (existing logic) ──
+            # Calculate theoretical fragments
+            theo_frags = calc_theoretical_frags(
+                ident.alpha_seq, mods_dict, ion_types, max_charge
             )
-            if nl_frags:
-                unique_nl = deduplicate_frags(theo_frags, nl_frags,
-                                              tol_ppm=tol_ppm)
-                if unique_nl:
-                    nl_matches = match_fragments(
-                        spectrum.mz, spectrum.intensity, unique_nl, tol_ppm,
-                    )
 
-            # Cleavable b/y[lc/sc] ions with neutral loss
+            # Match fragments
+            matches = match_fragments(
+                spectrum.mz, spectrum.intensity, theo_frags, tol_ppm
+            )
+
+            # Calculate cleavable ions if applicable
+            clv_matches = []
             if is_cleavable and (ident.is_mono or ident.is_loop):
                 crosslink_site = (ident.alpha_xlink_site
                                   if ident.alpha_xlink_site > 0 else 0)
-                nl_clv_frags = calc_neutral_loss_cleavable_frags(
-                    ident.alpha_seq, crosslink_site, mods_dict, nl_info,
+                clv_frags = calc_cleavable_frags(
+                    ident.alpha_seq, crosslink_site, mods_dict,
                     long_arm_mass, short_arm_mass, ion_types, max_charge,
                 )
-                if nl_clv_frags:
-                    # Deduplicate against standard + standard-NL frags
-                    existing = dict(theo_frags)
-                    existing.update(nl_frags)
-                    unique_nl_clv = deduplicate_frags(existing, nl_clv_frags,
-                                                      tol_ppm=tol_ppm)
-                    if unique_nl_clv:
-                        nl_clv_matches = match_fragments(
-                            spectrum.mz, spectrum.intensity,
-                            unique_nl_clv, tol_ppm,
+                if clv_frags:
+                    unique_clv = deduplicate_frags(theo_frags, clv_frags,
+                                                   tol_ppm=tol_ppm)
+                    if unique_clv:
+                        clv_matches = match_fragments(
+                            spectrum.mz, spectrum.intensity, unique_clv, tol_ppm
                         )
-                        nl_matches.extend(nl_clv_matches)
 
-        # Combine standard and cleavable matches for fstat
-        all_matches = matches + clv_matches + nl_matches
+            # Calculate neutral-loss ions if any modification has neutral losses
+            nl_info = get_nl_info_from_identification(ident, mods_dict)
+            nl_matches = []
+            if nl_info:
+                nl_frags = calc_neutral_loss_frags(
+                    ident.alpha_seq, mods_dict, nl_info, ion_types, max_charge,
+                )
+                if nl_frags:
+                    unique_nl = deduplicate_frags(theo_frags, nl_frags,
+                                                  tol_ppm=tol_ppm)
+                    if unique_nl:
+                        nl_matches = match_fragments(
+                            spectrum.mz, spectrum.intensity, unique_nl, tol_ppm,
+                        )
 
-        # Build fragment status
-        fstat = build_fragment_status(all_matches)
+                if is_cleavable and (ident.is_mono or ident.is_loop):
+                    crosslink_site = (ident.alpha_xlink_site
+                                      if ident.alpha_xlink_site > 0 else 0)
+                    nl_clv_frags = calc_neutral_loss_cleavable_frags(
+                        ident.alpha_seq, crosslink_site, mods_dict, nl_info,
+                        long_arm_mass, short_arm_mass, ion_types, max_charge,
+                    )
+                    if nl_clv_frags:
+                        existing = dict(theo_frags)
+                        existing.update(nl_frags)
+                        unique_nl_clv = deduplicate_frags(existing, nl_clv_frags,
+                                                          tol_ppm=tol_ppm)
+                        if unique_nl_clv:
+                            nl_clv_matches = match_fragments(
+                                spectrum.mz, spectrum.intensity,
+                                unique_nl_clv, tol_ppm,
+                            )
+                            nl_matches.extend(nl_clv_matches)
 
-        # Count coverage
-        b_count, y_count, b_possible, y_possible = count_coverage(
-            fstat, len(ident.alpha_seq)
-        )
+            all_matches = matches + clv_matches + nl_matches
+            fstat = build_fragment_status(all_matches)
+            b_p = len(ident.alpha_seq) - 1
+            y_p = b_p
+            b_count = len({k.rstrip('*') for k in fstat if k.startswith('b')})
+            y_count = len({k.rstrip('*') for k in fstat if k.startswith('y')})
 
-        # Build intact precursor m/z matches
-        precursor_matches = _build_precursor_matches(
-            ident, mods_dict, spectrum,
-            is_cleavable, long_arm_mass, short_arm_mass, tol_ppm,
-            nl_info=nl_info, max_charge=max_charge,
-        )
+            # Build intact precursor m/z matches
+            precursor_matches = _build_precursor_matches(
+                ident, mods_dict, spectrum,
+                is_cleavable, long_arm_mass, short_arm_mass, tol_ppm,
+                nl_info=nl_info, max_charge=max_charge,
+            )
+
+            # ProForma
+            proforma_str = build_proforma(ident.alpha_seq, mods_dict)
+            proforma_str += f'/{ident.charge}'
 
         # X-axis range (shared across panels)
         mz_min = spectrum.mz.min() - 20
@@ -162,9 +230,6 @@ class FigureComposer:
         max_int = spectrum.max_intensity
 
         # Build ProForma + annotate via spectrum_utils
-        proforma_str = build_proforma(ident.alpha_seq, mods_dict)
-        proforma_str += f'/{ident.charge}'
-
         spec_obj = sus.MsmsSpectrum(
             ident.title,
             spectrum.precursor_mz,
@@ -193,17 +258,26 @@ class FigureComposer:
         for cfg in [lad_cfg, spec_cfg, err_cfg]:
             cfg['colors'] = color_cfg
 
+        if ident.is_xlink:
+            # Taller figure + larger ladder ratio for dual-chain layout
+            fig_height = fig_cfg.get('xlink_height_inches', 7.0)
+            hr = fig_cfg.get('xlink_height_ratios', [2.2, 1.3, 0.40])
+            top_m = fig_cfg.get('xlink_top_margin', 0.96)
+        else:
+            fig_height = fig_cfg.get('height_inches', 4.7)
+            hr = fig_cfg.get('height_ratios', [0.7, 1.3, 0.40])
+            top_m = fig_cfg.get('top_margin', 0.94)
+
         fig = plt.figure(
-            figsize=(fig_cfg.get('width_inches', 10.0),
-                     fig_cfg.get('height_inches', 4.7)),
+            figsize=(fig_cfg.get('width_inches', 10.0), fig_height),
             facecolor=fig_cfg.get('facecolor', 'white'),
         )
 
         gs = fig.add_gridspec(
             3, 1,
-            height_ratios=fig_cfg.get('height_ratios', [0.7, 1.3, 0.40]),
+            height_ratios=hr,
             hspace=fig_cfg.get('hspace', 0.30),
-            top=fig_cfg.get('top_margin', 0.94),
+            top=top_m,
             bottom=fig_cfg.get('bottom_margin', 0.10),
             left=fig_cfg.get('left_margin', 0.07),
             right=fig_cfg.get('right_margin', 0.97),
@@ -213,22 +287,27 @@ class FigureComposer:
         ax_spec = fig.add_subplot(gs[1])
         ax_err = fig.add_subplot(gs[2])
 
-        # Determine xlink_pos for mono-link ring marker
-        xlink_pos = (ident.alpha_xlink_site
-                     if ident.is_mono and ident.alpha_xlink_site > 0
-                     else 0)
+        # Draw ladder
+        if ident.is_xlink:
+            from .ladder_panel import draw_xlink_ladder_panel
+            draw_xlink_ladder_panel(
+                ax_lad, ident.alpha_seq, ident.beta_seq, fstat, ident.charge,
+                (ident.alpha_xlink_site, ident.beta_xlink_site),
+                alpha_show, beta_show, mz_min, mz_max, lad_cfg,
+            )
+        else:
+            xlink_pos = (ident.alpha_xlink_site
+                         if ident.is_mono and ident.alpha_xlink_site > 0
+                         else 0)
+            loop_sites = None
+            show_loop_arc = False
+            if ident.is_loop and ident.alpha_xlink_site > 0 and ident.beta_xlink_site > 0:
+                loop_sites = (ident.alpha_xlink_site, ident.beta_xlink_site)
+                show_loop_arc = lad_cfg.get('show_loop_arc', False)
 
-        # Determine loop_sites (always for ring markers) and show_loop_arc
-        loop_sites = None
-        show_loop_arc = False
-        if ident.is_loop and ident.alpha_xlink_site > 0 and ident.beta_xlink_site > 0:
-            loop_sites = (ident.alpha_xlink_site, ident.beta_xlink_site)
-            show_loop_arc = lad_cfg.get('show_loop_arc', False)
-
-        # Draw panels
-        draw_ladder_panel(ax_lad, ident.alpha_seq, fstat, ident.charge,
-                          mod_show, mz_min, mz_max, xlink_pos,
-                          loop_sites, show_loop_arc, lad_cfg)
+            draw_ladder_panel(ax_lad, ident.alpha_seq, fstat, ident.charge,
+                              mod_show, mz_min, mz_max, xlink_pos,
+                              loop_sites, show_loop_arc, lad_cfg)
 
         draw_spectrum_panel(ax_spec, spec_obj, all_matches, max_int, spec_cfg,
                             precursor_matches=precursor_matches)
@@ -251,8 +330,14 @@ class FigureComposer:
                  color=title_cfg.get('spec_name_color', '#333333'),
                  fontweight='bold', va='top', ha='left')
 
-        meta = build_meta_string(ident, mods_dict, mod_show,
-                                 b_count, y_count, tol_ppm)
+        if ident.is_xlink:
+            meta = (f'{ident.alpha_seq}--{ident.beta_seq}  '
+                    f'z={ident.charge}  xlink  |  '
+                    f'b:{b_count}/{b_p}  y:{y_count}/{y_p}  |  '
+                    f'\u00b1{tol_ppm} ppm')
+        else:
+            meta = build_meta_string(ident, mods_dict, mod_show,
+                                     b_count, y_count, tol_ppm)
         fig.text(left_frac, 0.935, meta,
                  fontsize=title_cfg.get('meta_fontsize', 9.5),
                  color=title_cfg.get('meta_color', '#000000'),
@@ -261,12 +346,20 @@ class FigureComposer:
         # ── Y-axis labels ──
         y_label_x = ylabel_cfg.get('x_position', 0.025)
         y_label_fs = ylabel_cfg.get('fontsize', 12)
+        if ident.is_xlink:
+            int_y = ylabel_cfg.get('xlink_intensity_y',
+                                   ylabel_cfg.get('intensity_y', 0.45))
+            err_y = ylabel_cfg.get('xlink_error_y',
+                                   ylabel_cfg.get('error_y', 0.16))
+        else:
+            int_y = ylabel_cfg.get('intensity_y', 0.45)
+            err_y = ylabel_cfg.get('error_y', 0.16)
 
-        fig.text(y_label_x, 0.45,
+        fig.text(y_label_x, int_y,
                  ylabel_cfg.get('intensity_label', 'Rel. int. (%)'),
                  fontsize=y_label_fs, color='#000000', fontweight='bold',
                  va='center', ha='center', rotation=90)
-        fig.text(y_label_x, 0.16,
+        fig.text(y_label_x, err_y,
                  ylabel_cfg.get('error_label', '\u0394 (ppm)'),
                  fontsize=y_label_fs, color='#000000', fontweight='bold',
                  va='center', ha='center', rotation=90)
@@ -277,7 +370,7 @@ class FigureComposer:
                     facecolor='white', edgecolor='none')
         plt.close(fig)
 
-        return b_count, y_count, b_possible, y_possible, len(all_matches)
+        return b_count, y_count, b_p, y_p, len(all_matches)
 
 
 def _build_precursor_matches(ident: Identification,
@@ -383,3 +476,122 @@ def _build_precursor_matches(ident: Identification,
                                 results.append(m)
 
     return results
+
+
+def _prefix_matches(matches: list, prefix: str) -> list:
+    """Prepend a chain prefix to fragment names in match results.
+
+    ``b3+1`` → ``αb3+1``, ``y5[lc]+2*`` → ``αy5[lc]+2*``.
+
+    Parameters
+    ----------
+    matches : list of (name, theo_mz, obs_mz, intensity, ppm)
+    prefix : str
+        Chain prefix, e.g. ``'α'`` or ``'β'``.
+
+    Returns
+    -------
+    list
+        Matches with prefixed fragment names.
+    """
+    result = []
+    for m in matches:
+        name, theo, obs, inte, ppm = m
+        result.append((prefix + name, theo, obs, inte, ppm))
+    return result
+
+
+def _get_chain_nl_info(ident: Identification,
+                        mods_dict: dict,
+                        chain: str) -> dict:
+    """Collect neutral loss info for a single chain of a cross-link.
+
+    Looks up variable modifications of the specified chain in
+    ``modification.ini``.  The crosslinker partner mass (already in
+    ``mods_dict`` at the xlink site) is *not* checked — NL only applies
+    to the chain's own modifications.
+    """
+    from ..database.ini_loader import get_mod_data
+    mod_data = get_mod_data()
+    nl_info = {}
+
+    varmods = (ident.get_alpha_varmod_list() if chain == 'alpha'
+               else ident.get_beta_varmod_list())
+    for mod_type, pos in varmods:
+        if mod_type in mod_data and mod_data[mod_type].get('neutral_losses'):
+            nl_info[pos] = list(mod_data[mod_type]['neutral_losses'])
+
+    return nl_info
+
+
+def _build_xlink_precursor_matches(ident: Identification,
+                                    linker_mass: float,
+                                    spectrum,
+                                    tol_ppm: float,
+                                    alpha_nl: dict = None,
+                                    beta_nl: dict = None,
+                                    max_charge: int = 2) -> list:
+    """Match cross-link precursor m/z against observed spectrum peaks.
+
+    Searches the full cross-linked precursor (αβ) at all applicable
+    charge states, plus neutral-loss variants for both chains.
+    """
+    from ..utils.proforma_utils import _chain_neutral_mass
+    from ..database.modifications import get_mod_mass
+
+    results = []
+
+    def _match_one(theo_mz, label):
+        tol_da = theo_mz * tol_ppm / 1e6
+        diff = np.abs(spectrum.mz - theo_mz)
+        idx = np.argmin(diff)
+        if diff[idx] < tol_da:
+            obs_mz = spectrum.mz[idx]
+            int_norm = spectrum.intensity[idx] / spectrum.max_intensity * 100
+            ppm = (obs_mz - theo_mz) / theo_mz * 1e6
+            return (label, obs_mz, int_norm, ppm)
+        return None
+
+    # Chain masses (without partner mass)
+    alpha_base = _chain_neutral_mass(ident.alpha_seq, ident.get_alpha_varmod_list())
+    beta_base = _chain_neutral_mass(ident.beta_seq, ident.get_beta_varmod_list())
+
+    charges = [ident.charge] + [z for z in range(1, max_charge + 1)
+                                if z != ident.charge]
+
+    for z in charges:
+        ch = '+' * z
+
+        # Full cross-linked precursor
+        total = alpha_base + beta_base + linker_mass
+        mz = (total + z * PROTON) / z
+        m = _match_one(mz, f'\u03b1\u03b2{ch}')
+        if m:
+            results.append(m)
+
+        # NL variants: α chain NL
+        if alpha_nl:
+            for pos, nl_mass in _iter_nl(alpha_nl):
+                alt_total = (alpha_base - nl_mass) + beta_base + linker_mass
+                alt_mz = (alt_total + z * PROTON) / z
+                m = _match_one(alt_mz, f'\u03b1\u03b2{ch}*')
+                if m:
+                    results.append(m)
+
+        # NL variants: β chain NL
+        if beta_nl:
+            for pos, nl_mass in _iter_nl(beta_nl):
+                alt_total = alpha_base + (beta_base - nl_mass) + linker_mass
+                alt_mz = (alt_total + z * PROTON) / z
+                m = _match_one(alt_mz, f'\u03b1\u03b2{ch}*')
+                if m:
+                    results.append(m)
+
+    return results
+
+
+def _iter_nl(nl_info: dict):
+    """Yield (position, nl_mass) pairs from nl_info."""
+    for pos, nl_masses in nl_info.items():
+        for nl_mass in nl_masses:
+            yield pos, nl_mass

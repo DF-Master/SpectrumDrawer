@@ -74,16 +74,40 @@ def build_fragment_status(matches: List[MatchResult]
 
         if '[lc]' in frag_name:
             base = frag_name.replace('[lc]', '')
-            if base.startswith('b'):
+            if base.startswith('αb'):
+                fstat[frag_name + key_suffix] = 'αblc'
+            elif base.startswith('βb'):
+                fstat[frag_name + key_suffix] = 'βblc'
+            elif base.startswith('αy'):
+                fstat[frag_name + key_suffix] = 'αylc'
+            elif base.startswith('βy'):
+                fstat[frag_name + key_suffix] = 'βylc'
+            elif base.startswith('b'):
                 fstat[frag_name + key_suffix] = 'blc'
             elif base.startswith('y'):
                 fstat[frag_name + key_suffix] = 'ylc'
         elif '[sc]' in frag_name:
             base = frag_name.replace('[sc]', '')
-            if base.startswith('b'):
+            if base.startswith('αb'):
+                fstat[frag_name + key_suffix] = 'αbsc'
+            elif base.startswith('βb'):
+                fstat[frag_name + key_suffix] = 'βbsc'
+            elif base.startswith('αy'):
+                fstat[frag_name + key_suffix] = 'αysc'
+            elif base.startswith('βy'):
+                fstat[frag_name + key_suffix] = 'βysc'
+            elif base.startswith('b'):
                 fstat[frag_name + key_suffix] = 'bsc'
             elif base.startswith('y'):
                 fstat[frag_name + key_suffix] = 'ysc'
+        elif frag_name.startswith('αb'):
+            fstat[frag_name + key_suffix] = 'αb'
+        elif frag_name.startswith('βb'):
+            fstat[frag_name + key_suffix] = 'βb'
+        elif frag_name.startswith('αy'):
+            fstat[frag_name + key_suffix] = 'αy'
+        elif frag_name.startswith('βy'):
+            fstat[frag_name + key_suffix] = 'βy'
         elif frag_name.startswith('b'):
             fstat[frag_name + key_suffix] = 'b'
         elif frag_name.startswith('y'):

@@ -1,7 +1,8 @@
 """ProForma string builders for spectrum_utils annotation."""
 
 from typing import Dict, List, Tuple
-from ..database import FIX_MODS, FIX_MOD_NAMES, VAR_MODS
+from ..database import FIX_MODS, FIX_MOD_NAMES, VAR_MODS, AA_MASS, H2O, PROTON
+from ..database.modifications import get_mod_mass
 from ..models import Identification
 
 
@@ -175,6 +176,117 @@ def get_nl_info_from_identification(ident: Identification,
                     existing.add(nl_mass)
 
     return nl_info
+
+
+def _chain_neutral_mass(seq: str, varmods: List[Tuple[str, int]]) -> float:
+    """Compute neutral mass of a peptide chain including modifications."""
+    mass = sum(AA_MASS[aa] for aa in seq) + H2O
+    for i, aa in enumerate(seq):
+        pos = i + 1
+        if aa in FIX_MODS:
+            mass += FIX_MODS[aa]
+    for mod_type, pos in varmods:
+        try:
+            mass += get_mod_mass(mod_type)
+        except ValueError:
+            pass
+    return mass
+
+
+def build_xlink_mods_dict(ident: Identification, chain: str,
+                          linker_mass: float) -> Tuple[Dict[int, float], set]:
+    """Build mods_dict for one chain of a cross-linked peptide.
+
+    The partner chain mass + linker mass is added as a modification
+    at the crosslink site.
+
+    Parameters
+    ----------
+    ident : Identification
+        Must be ``is_xlink == True``.
+    chain : str
+        ``'alpha'`` or ``'beta'``.
+    linker_mass : float
+        Crosslinker dead-end mass (from xlink.ini).
+
+    Returns
+    -------
+    mods_dict : dict
+        {1-based position: mass_delta}.
+    mod_show : set
+        Set of 1-based positions to highlight in the ladder panel.
+    """
+    if chain == 'alpha':
+        seq = ident.alpha_seq
+        varmods = ident.get_alpha_varmod_list()
+        xlink_site = ident.alpha_xlink_site
+        partner_seq = ident.beta_seq
+        partner_varmods = ident.get_beta_varmod_list()
+    else:
+        seq = ident.beta_seq
+        varmods = ident.get_beta_varmod_list()
+        xlink_site = ident.beta_xlink_site
+        partner_seq = ident.alpha_seq
+        partner_varmods = ident.get_alpha_varmod_list()
+
+    mods_dict = {}
+    mod_show = set()
+
+    # Fixed modifications
+    for i, aa in enumerate(seq):
+        pos = i + 1
+        if aa in FIX_MODS:
+            mods_dict[pos] = FIX_MODS[aa]
+            mod_show.add(pos)
+
+    # Variable modifications (this chain's own)
+    for mod_type, pos in varmods:
+        try:
+            mods_dict[pos] = get_mod_mass(mod_type)
+        except ValueError:
+            pass
+        mod_show.add(pos)
+
+    # Partner chain + linker mass at crosslink site
+    if xlink_site > 0:
+        partner_mass = _chain_neutral_mass(partner_seq, partner_varmods)
+        mods_dict[xlink_site] = partner_mass + linker_mass
+        mod_show.add(xlink_site)
+
+    return mods_dict, mod_show
+
+
+def compute_xlink_precursor_mz(ident: Identification,
+                                alpha_mods: Dict[int, float],
+                                beta_mods: Dict[int, float],
+                                linker_mass: float,
+                                charge: int) -> float:
+    """Compute theoretical precursor m/z for a cross-linked peptide.
+
+    Parameters
+    ----------
+    ident : Identification
+    alpha_mods : dict
+        {1-based position: mass_delta} for α chain (excluding partner mass).
+    beta_mods : dict
+        {1-based position: mass_delta} for β chain (excluding partner mass).
+    linker_mass : float
+        Crosslinker dead-end mass.
+    charge : int
+        Precursor charge state.
+
+    Returns
+    -------
+    float
+        Theoretical precursor m/z.
+    """
+    # α chain neutral mass (with its own mods, not partner)
+    total = _chain_neutral_mass(ident.alpha_seq, ident.get_alpha_varmod_list())
+    # β chain neutral mass
+    total += _chain_neutral_mass(ident.beta_seq, ident.get_beta_varmod_list())
+    # Crosslinker
+    total += linker_mass
+    return (total + charge * PROTON) / charge
 
 
 def _abbreviate_mod_name(mod_full_name: str) -> str:

@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from typing import List
 
 from ..utils.fragment_matcher import MatchResult
+from .spectrum_panel import _ion_color
 
 
 def draw_mass_error_panel(ax, reg_matches: List[MatchResult],
@@ -29,6 +30,8 @@ def draw_mass_error_panel(ax, reg_matches: List[MatchResult],
     colors = config.get('colors', {})
     c_b = colors.get('b_ion', '#006400')
     c_y = colors.get('y_ion', '#CC0033')
+    c_beta_b = colors.get('beta_b_ion', '#008080')
+    c_beta_y = colors.get('beta_y_ion', '#CC3300')
     c_clv_lc = colors.get('cleavable_ion_lc', '#6A0DAD')  # deep violet for long chain
     c_clv_sc = colors.get('cleavable_ion_sc', '#C77DFF')  # light violet for short chain
     c_precursor = colors.get('intact_precursor', '#444444')  # dark grey for intact precursor
@@ -50,14 +53,8 @@ def draw_mass_error_panel(ax, reg_matches: List[MatchResult],
 
     for r in reg_matches:
         name, theo_mz, obs_mz, intensity, ppm = r
-        if '[lc]' in name:
-            color = c_clv_lc
-        elif '[sc]' in name:
-            color = c_clv_sc
-        elif name.startswith('b'):
-            color = c_b
-        else:
-            color = c_y
+        color = _ion_color(name, c_b, c_y, c_beta_b, c_beta_y,
+                           c_clv_lc, c_clv_sc)
         ax.scatter(obs_mz, ppm, c=color, s=s_size, zorder=5,
                    edgecolors='white', linewidth=s_lw)
 

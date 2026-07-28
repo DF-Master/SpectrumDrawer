@@ -34,6 +34,8 @@ def draw_spectrum_panel(ax, spec, reg_matches: List[MatchResult],
     c_peak = colors.get('unmatched_peak', '#808080')
     c_b = colors.get('b_ion', '#006400')
     c_y = colors.get('y_ion', '#CC0033')
+    c_beta_b = colors.get('beta_b_ion', '#008080')
+    c_beta_y = colors.get('beta_y_ion', '#CC3300')
     c_clv_lc = colors.get('cleavable_ion_lc', '#6A0DAD')
     c_clv_sc = colors.get('cleavable_ion_sc', '#C77DFF')
     c_precursor = colors.get('intact_precursor', '#444444')
@@ -51,14 +53,8 @@ def draw_spectrum_panel(ax, spec, reg_matches: List[MatchResult],
     match_lw = config.get('match_linewidth', 2.8)
     for r in reg_matches:
         name, theo_mz, obs_mz, intensity, ppm = r
-        if '[lc]' in name:
-            color = c_clv_lc
-        elif '[sc]' in name:
-            color = c_clv_sc
-        elif name.startswith('b'):
-            color = c_b
-        else:
-            color = c_y
+        color = _ion_color(name, c_b, c_y, c_beta_b, c_beta_y,
+                           c_clv_lc, c_clv_sc)
         ax.vlines(obs_mz, 0, intensity / max_int * 100,
                   colors=color, linewidths=match_lw, zorder=3)
 
@@ -79,14 +75,8 @@ def draw_spectrum_panel(ax, spec, reg_matches: List[MatchResult],
         ch = '+' * z
         nl_mark = '*' if is_nl else ''
         label = f'{simple}{ch}{nl_mark}'
-        if '[lc]' in name:
-            color = c_clv_lc
-        elif '[sc]' in name:
-            color = c_clv_sc
-        elif name.startswith('b'):
-            color = c_b
-        else:
-            color = c_y
+        color = _ion_color(name, c_b, c_y, c_beta_b, c_beta_y,
+                           c_clv_lc, c_clv_sc)
         ax.text(obs_mz, intensity / max_int * 100 + 2, label,
                 ha='center', va='bottom', fontsize=ion_fs,
                 fontweight='bold', color=color,
@@ -109,3 +99,20 @@ def draw_spectrum_panel(ax, spec, reg_matches: List[MatchResult],
                     ha='center', va='bottom', fontsize=ion_fs,
                     fontweight='bold', color=c_precursor,
                     rotation=ion_rot, zorder=10)
+
+
+def _ion_color(name, c_b, c_y, c_beta_b, c_beta_y, c_clv_lc, c_clv_sc):
+    """Determine color for an ion based on its name prefix."""
+    if '[lc]' in name:
+        return c_clv_lc
+    if '[sc]' in name:
+        return c_clv_sc
+    if name.startswith('βb'):
+        return c_beta_b
+    if name.startswith('βy'):
+        return c_beta_y
+    if name.startswith('αb') or name.startswith('b'):
+        return c_b
+    if name.startswith('αy') or name.startswith('y'):
+        return c_y
+    return c_y  # fallback

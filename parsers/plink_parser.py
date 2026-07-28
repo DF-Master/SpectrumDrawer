@@ -171,11 +171,21 @@ class PlinkParser(BaseIdentificationParser):
             # parts[4] is score (not used)
             beta_seq = parts[5]
             # parts[6] is flag
-            # Remaining parts are modifications
-            # Need to determine which mods belong to alpha vs beta
-            # For now, assume all mods are for alpha (simplification)
+            # Remaining parts are modifications in combined coordinates:
+            #   [α_1..α_n] [C-term] [gap] [N-term] [β_1..β_m]
+            #   α pos = file_pos (1-based, 1..len(α))
+            #   β pos = file_pos - len(α) - 3 (1-based within β)
             mod_part_start = 7
-            alpha_mods = self._parse_mods(parts[mod_part_start:], mod_defs)
+            alpha_len = len(alpha_seq)
+            beta_offset = alpha_len + 3
+            raw_mods = self._parse_mods(parts[mod_part_start:], mod_defs)
+            alpha_mods = []
+            beta_mods = []
+            for mod_type, pos in raw_mods:
+                if pos <= alpha_len:
+                    alpha_mods.append((mod_type, pos))
+                elif pos > beta_offset:
+                    beta_mods.append((mod_type, pos - beta_offset))
             return Identification(
                 title=name,
                 alpha_seq=alpha_seq,
@@ -184,7 +194,7 @@ class PlinkParser(BaseIdentificationParser):
                 beta_xlink_site=beta_site,
                 spectrum_type=SpecType.XLINK,
                 alpha_varmods=alpha_mods,
-                beta_varmods=[],
+                beta_varmods=beta_mods,
                 charge=charge,
                 linker_name=xlink_name or DEFAULT_LINKER,
             )

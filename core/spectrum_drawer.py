@@ -97,11 +97,6 @@ class SpectrumDrawer:
         n_mz_match = 0
 
         for entry in entries:
-            # Skip unsupported types (cross-link not yet supported)
-            if entry.spectrum_type not in [SpecType.REGULAR, SpecType.MONO, SpecType.LOOP]:
-                n_skipped += 1
-                continue
-
             if spec_types is not None and int(entry.spectrum_type) not in spec_types:
                 continue
 
@@ -135,6 +130,7 @@ class SpectrumDrawer:
                 result = self.composer.draw(
                     spectrum, entry, out_path, linker_name,
                     mono_mass=mono_mass, loop_mass=loop_mass,
+                    linker_mass=loop_mass,  # xlink mass = dead-end mass
                     is_cleavable=is_cleavable,
                     long_arm_mass=long_arm_mass,
                     short_arm_mass=short_arm_mass,

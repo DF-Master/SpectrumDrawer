@@ -2,6 +2,7 @@ from .ion_calculator import (calc_theoretical_frags, calc_a_ions, calc_c_z_ions,
                               calc_cleavable_frags,
                               calc_neutral_loss_frags,
                               calc_neutral_loss_cleavable_frags,
+                              rename_xlink_arm_frags,
                               deduplicate_frags,
                               calc_precursor_mz)
 from .fragment_matcher import match_fragments, build_fragment_status, count_coverage

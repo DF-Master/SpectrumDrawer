@@ -44,16 +44,16 @@ ladder:
   show_loop_arc: false # draw loop-link arc connecting crosslink sites
   # ── Cross-link ladder overrides ──
   xlink_seq_y_offset: 3.0 # vertical offset for α chain (from seq_y=0)
-  xlink_chain_gap: 5.0 # vertical gap between α and β chain rows
+  xlink_chain_gap: 8.0 # vertical gap between α and β chain rows
   xlink_b_ion_drop: 0.6
   xlink_y_ion_rise: 0.6
-  xlink_clv_b_offset: 0.3
-  xlink_clv_y_offset: 0.3
-  xlink_clv_gap: 0.6
+  xlink_clv_b_offset: 0.5
+  xlink_clv_y_offset: 0.5
+  xlink_clv_gap: 1.2
   xlink_ylim_margin: 0.6 # padding above/below outermost brackets
   xlink_anchor_fraction: 0.1 # 0.5=center, 0.0=left, 1.0=right
-  xlink_line_alpha_offset: -1.5 # vertical offset from seq_y_a for line top
-  xlink_line_beta_offset: 1.5 # vertical offset from seq_y_b for line bottom
+  xlink_line_alpha_offset: -4.3 # vertical offset from seq_y_a for line top
+  xlink_line_beta_offset: 4.3 # vertical offset from seq_y_b for line bottom
 
 # ── Spectrum Panel ──
 spectrum:

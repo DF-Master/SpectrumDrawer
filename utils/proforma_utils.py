@@ -194,11 +194,14 @@ def _chain_neutral_mass(seq: str, varmods: List[Tuple[str, int]]) -> float:
 
 
 def build_xlink_mods_dict(ident: Identification, chain: str,
-                          linker_mass: float) -> Tuple[Dict[int, float], set]:
+                          linker_mass: float,
+                          arm: str = 'full',
+                          long_arm: float = 0.0,
+                          short_arm: float = 0.0) -> Tuple[Dict[int, float], set]:
     """Build mods_dict for one chain of a cross-linked peptide.
 
-    The partner chain mass + linker mass is added as a modification
-    at the crosslink site.
+    The partner chain mass + linker (or arm) mass is added as a
+    modification at the crosslink site.
 
     Parameters
     ----------
@@ -208,6 +211,14 @@ def build_xlink_mods_dict(ident: Identification, chain: str,
         ``'alpha'`` or ``'beta'``.
     linker_mass : float
         Crosslinker dead-end mass (from xlink.ini).
+    arm : str
+        ``'full'`` (default), ``'lc'``, or ``'sc'``.
+        Controls whether the full linker or a cleavable arm
+        is attached at the crosslink site.
+    long_arm : float
+        Long-arm mass (used when arm='lc').
+    short_arm : float
+        Short-arm mass (used when arm='sc').
 
     Returns
     -------
@@ -247,10 +258,16 @@ def build_xlink_mods_dict(ident: Identification, chain: str,
             pass
         mod_show.add(pos)
 
-    # Partner chain + linker mass at crosslink site
+    # Partner chain + linker (or arm) mass at crosslink site
     if xlink_site > 0:
         partner_mass = _chain_neutral_mass(partner_seq, partner_varmods)
-        mods_dict[xlink_site] = partner_mass + linker_mass
+        if arm == 'lc':
+            xlink_weight = partner_mass + long_arm
+        elif arm == 'sc':
+            xlink_weight = partner_mass + short_arm
+        else:
+            xlink_weight = partner_mass + linker_mass
+        mods_dict[xlink_site] = xlink_weight
         mod_show.add(xlink_site)
 
     return mods_dict, mod_show

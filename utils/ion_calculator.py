@@ -293,6 +293,36 @@ def calc_neutral_loss_cleavable_frags(seq: str, crosslink_site: int,
     return frags
 
 
+def rename_xlink_arm_frags(frags: Dict[str, float],
+                           chain_prefix: str,
+                           arm_label: str) -> Dict[str, float]:
+    """Rename fragment keys for xlink cleavable-arm ions.
+
+    ``b3+1`` → ``αb3[lc]+1`` when chain_prefix='α', arm_label='lc'.
+
+    Parameters
+    ----------
+    frags : dict
+        Standard fragment names (e.g. 'b3+1', 'y5+2').
+    chain_prefix : str
+        ``'α'`` or ``'β'``.
+    arm_label : str
+        ``'lc'`` or ``'sc'``.
+
+    Returns
+    -------
+    dict
+        Renamed fragments with ``{chain_prefix}{base}[{arm_label}]...`` naming.
+    """
+    result = {}
+    for name, mz in frags.items():
+        new_name = chain_prefix + name
+        plus_idx = new_name.rfind('+')
+        new_name = new_name[:plus_idx] + f'[{arm_label}]' + new_name[plus_idx:]
+        result[new_name] = mz
+    return result
+
+
 def deduplicate_frags(primary: Dict[str, float],
                       secondary: Dict[str, float],
                       tol_ppm: float = 5.0) -> Dict[str, float]:

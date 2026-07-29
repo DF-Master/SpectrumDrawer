@@ -16,6 +16,7 @@ from ..utils import (
     calc_neutral_loss_frags, calc_neutral_loss_cleavable_frags,
     get_nl_info_from_identification,
     build_xlink_mods_dict, compute_xlink_precursor_mz,
+    rename_xlink_arm_frags,
 )
 from ..database import PROTON
 from .ladder_panel import draw_ladder_panel
@@ -124,6 +125,74 @@ class FigureComposer:
                         nl_matches.extend(_prefix_matches(nl_m, 'β'))
 
             all_matches = alpha_matches + beta_matches + nl_matches
+
+            # ── Cleavable arm ions for crosslink (lc/sc) ──
+            if is_cleavable:
+                # Accumulator of all previously seen fragments for dedup
+                seen = {}
+                seen.update(alpha_theo)
+                seen.update(beta_theo)
+                for m in alpha_matches + beta_matches + nl_matches:
+                    seen.setdefault(m[0], m[1])
+
+                for arm_label, arm_mass in [('lc', long_arm_mass),
+                                             ('sc', short_arm_mass)]:
+                    for pfx, seq_attr in [('α', 'alpha'), ('β', 'beta')]:
+                        arm_mods, _ = build_xlink_mods_dict(
+                            ident, seq_attr, xlink_mass,
+                            arm=arm_label,
+                            long_arm=long_arm_mass,
+                            short_arm=short_arm_mass,
+                        )
+                        seq = (ident.alpha_seq if seq_attr == 'alpha'
+                               else ident.beta_seq)
+                        # Cleavable b/y[lc/sc]
+                        arm_theo = calc_theoretical_frags(
+                            seq, arm_mods, ion_types, max_charge)
+                        arm_named = rename_xlink_arm_frags(
+                            arm_theo, pfx, arm_label)
+                        arm_unique = deduplicate_frags(
+                            seen, arm_named, tol_ppm=tol_ppm)
+                        if arm_unique:
+                            arm_m = match_fragments(
+                                spectrum.mz, spectrum.intensity,
+                                arm_unique, tol_ppm)
+                            all_matches.extend(arm_m)
+                            for m in arm_m:
+                                seen.setdefault(m[0], m[1])
+                        seen.update(arm_named)
+
+                        # NL + cleavable: b/y[lc/sc]*
+                        nl_info = _get_chain_nl_info(
+                            ident, arm_mods, seq_attr)
+                        if nl_info:
+                            nl_clv = calc_neutral_loss_frags(
+                                seq, arm_mods, nl_info,
+                                ion_types, max_charge)
+                            nl_clv_named = {
+                                pfx + k: v for k, v in nl_clv.items()}
+                            # Insert arm label before charge: αb3+1* → αb3[lc]+1*
+                            nl_clv_final = {}
+                            for k, v in nl_clv_named.items():
+                                plus_idx = k.rfind('+')
+                                # Handle * suffix
+                                nl_suffix = ''
+                                if k.endswith('*'):
+                                    nl_suffix = '*'
+                                    k = k[:-1]
+                                    plus_idx = k.rfind('+')
+                                new_k = (k[:plus_idx] + f'[{arm_label}]'
+                                         + k[plus_idx:] + nl_suffix)
+                                nl_clv_final[new_k] = v
+                            nl_arm_unique = deduplicate_frags(
+                                seen, nl_clv_final, tol_ppm=tol_ppm)
+                            if nl_arm_unique:
+                                nl_arm_m = match_fragments(
+                                    spectrum.mz, spectrum.intensity,
+                                    nl_arm_unique, tol_ppm)
+                                all_matches.extend(nl_arm_m)
+                            seen.update(nl_clv_final)
+
             fstat = build_fragment_status(all_matches)
             b_p = (len(ident.alpha_seq) - 1) + (len(ident.beta_seq) - 1)
             y_p = b_p
@@ -137,6 +206,8 @@ class FigureComposer:
             precursor_matches = _build_xlink_precursor_matches(
                 ident, xlink_mass, spectrum, tol_ppm,
                 alpha_nl=alpha_nl, beta_nl=beta_nl, max_charge=max_charge,
+                is_cleavable=is_cleavable,
+                long_arm=long_arm_mass, short_arm=short_arm_mass,
             )
 
             # ProForma (use α chain only for spectrum_utils annotation)
@@ -530,10 +601,14 @@ def _build_xlink_precursor_matches(ident: Identification,
                                     tol_ppm: float,
                                     alpha_nl: dict = None,
                                     beta_nl: dict = None,
-                                    max_charge: int = 2) -> list:
+                                    max_charge: int = 2,
+                                    is_cleavable: bool = False,
+                                    long_arm: float = 0.0,
+                                    short_arm: float = 0.0) -> list:
     """Match cross-link precursor m/z against observed spectrum peaks.
 
-    Searches the full cross-linked precursor (αβ) at all applicable
+    Searches the full cross-linked precursor (αβ) and cleavable-arm
+    precursors (α[lc], β[lc], α[sc], β[sc]) at all applicable
     charge states, plus neutral-loss variants for both chains.
     """
     from ..utils.proforma_utils import _chain_neutral_mass
@@ -586,6 +661,36 @@ def _build_xlink_precursor_matches(ident: Identification,
                 m = _match_one(alt_mz, f'\u03b1\u03b2{ch}*')
                 if m:
                     results.append(m)
+
+        # ── Cleavable arm precursors ──
+        if is_cleavable:
+            for arm_label, arm_mass in [('lc', long_arm), ('sc', short_arm)]:
+                if arm_mass <= 0:
+                    continue
+                # α + arm
+                mz_a = (alpha_base + arm_mass + z * PROTON) / z
+                m = _match_one(mz_a, f'\u03b1[{arm_label}]{ch}')
+                if m:
+                    results.append(m)
+                # β + arm
+                mz_b = (beta_base + arm_mass + z * PROTON) / z
+                m = _match_one(mz_b, f'\u03b2[{arm_label}]{ch}')
+                if m:
+                    results.append(m)
+                # NL variants
+                for nl_info, label_pfx in [(alpha_nl, '\u03b1'),
+                                            (beta_nl, '\u03b2')]:
+                    if not nl_info:
+                        continue
+                    for pos, nl_mass in _iter_nl(nl_info):
+                        base = (alpha_base if label_pfx == '\u03b1'
+                                else beta_base)
+                        mz_nl = (base - nl_mass + arm_mass
+                                 + z * PROTON) / z
+                        m = _match_one(mz_nl,
+                                       f'{label_pfx}[{arm_label}]{ch}*')
+                        if m:
+                            results.append(m)
 
     return results
 

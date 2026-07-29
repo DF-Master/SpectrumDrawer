@@ -429,6 +429,64 @@ def draw_xlink_ladder_panel(ax, alpha_seq: str, beta_seq: str,
                     ha='center', va='bottom', fontsize=ion_fs,
                     fontweight='bold', color=c, zorder=10, clip_on=False)
 
+        # y[lc/sc] brackets (above regular y, shorter vertical)
+        for i in range(1, n):
+            key_lc, label_lc = _xl_fstat_key_and_label(
+                f'{fstat_prefix}y{i}[lc]')
+            key_sc, label_sc = _xl_fstat_key_and_label(
+                f'{fstat_prefix}y{i}[sc]')
+            if key_lc is not None:
+                ion_type = fstat[key_lc]
+                color = _xl_ion_color(ion_type)
+                label = label_lc
+            elif key_sc is not None:
+                ion_type = fstat[key_sc]
+                color = _xl_ion_color(ion_type)
+                label = label_sc
+            else:
+                continue
+            x = first_x + (n - i - 0.5) * spacing
+            y_start = seq_y + y_rise + clv_gap
+            y_outer = y_start + clv_y_off
+            ax.plot([x, x], [y_start, y_outer], color=color, lw=2.0,
+                    zorder=5, clip_on=False, solid_capstyle='round')
+            ax.plot([x, x + tick_len], [y_outer, y_outer], color=color,
+                    lw=2.0, zorder=5, clip_on=False,
+                    solid_capstyle='round')
+            ax.text(x + tick_len / 2, y_outer + 0.15, label,
+                    ha='center', va='bottom', fontsize=ion_fs,
+                    fontweight='bold', color=color, zorder=10,
+                    clip_on=False)
+
+        # b[lc/sc] brackets (below regular b, shorter vertical)
+        for i in range(1, n):
+            key_lc, label_lc = _xl_fstat_key_and_label(
+                f'{fstat_prefix}b{i}[lc]')
+            key_sc, label_sc = _xl_fstat_key_and_label(
+                f'{fstat_prefix}b{i}[sc]')
+            if key_lc is not None:
+                ion_type = fstat[key_lc]
+                color = _xl_ion_color(ion_type)
+                label = label_lc
+            elif key_sc is not None:
+                ion_type = fstat[key_sc]
+                color = _xl_ion_color(ion_type)
+                label = label_sc
+            else:
+                continue
+            x = first_x + (i - 0.5) * spacing
+            y_start = seq_y - b_drop - clv_gap
+            y_outer = y_start - clv_b_off
+            ax.plot([x, x], [y_start, y_outer], color=color, lw=2.0,
+                    zorder=5, clip_on=False, solid_capstyle='round')
+            ax.plot([x - tick_len, x], [y_outer, y_outer], color=color,
+                    lw=2.0, zorder=5, clip_on=False,
+                    solid_capstyle='round')
+            ax.text(x - tick_len / 2, y_outer - 0.15, label,
+                    ha='center', va='top', fontsize=ion_fs,
+                    fontweight='bold', color=color, zorder=10,
+                    clip_on=False)
+
     # Draw brackets for both chains
     _draw_chain_brackets(alpha_seq, n_a, seq_y_a, 'α', True, first_x_a)
     _draw_chain_brackets(beta_seq, n_b, seq_y_b, 'β', False, first_x_b)

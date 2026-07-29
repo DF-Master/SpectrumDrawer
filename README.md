@@ -4,6 +4,14 @@ MS/MS 谱图可视化工具，专为交联质谱 (Cross-Linking Mass Spectrometr
 
 从 pLink 或 pSimXL 的鉴定结果出发，自动生成带有序列梯子图、谱图注释和质量误差面板的出版级 PNG 图片。
 
+![1785298903515](image/README/1785298903515.png)
+
+![1785298855724](image/README/1785298855724.png)
+
+![1785298888091](image/README/1785298888091.png)
+
+![1785298975700](image/README/1785298975700.png)
+
 ---
 
 ## 功能特性

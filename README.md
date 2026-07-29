@@ -229,10 +229,6 @@ SpectrumDrawer/
 **v0.1.2**
 
 - 大型 MGF 文件支持（200 MB – 2 GB+）：单次流式遍历，内存占用降低 90%+
-- 处理速度提升约 3 倍：单次遍历 + 即时匹配替代旧版两阶段流程
-- MGF 读取器重构：新增 `stream()` 生成器和 `read_metadata()` 轻量扫描
-- `SpectrumDrawer.run()` 改用单次 MGF 遍历，跳过无关峰行的解析
-- 支持批量处理（`batch_draw_*.py`），输出到各自 MGF 对应子目录
 
 **v0.1.1**
 

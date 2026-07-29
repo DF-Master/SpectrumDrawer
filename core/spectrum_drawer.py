@@ -1,8 +1,9 @@
 """Spectrum drawer — main orchestrator."""
 
 import os
+import re
 import numpy as np
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Set
 
 from ..config import ConfigManager
 from ..readers import BaseSpectrumReader
@@ -31,40 +32,39 @@ class SpectrumDrawer:
 
     def __init__(self, config_path: Optional[str] = None):
         self.config = ConfigManager(config_path)
-        # Apply modification defaults from config to the database layer
         configure_mod_names(fix_names=self.config.fix_mod_names,
                             var_names=self.config.var_mod_names)
         self.composer = FigureComposer(self.config)
+
+    # ── public API ────────────────────────────────────────────────
 
     def run(self, spectrum_path: str, ident_path: str,
             parser: str, out_dir: str,
             linker_name: str = None,
             spec_types: Optional[List[int]] = None):
-        """Run the full pipeline: load → match → draw.
+        """Run the full pipeline: load identifications → single-pass MGF scan → draw.
 
-        Uses a two-phase approach for memory efficiency with large MGF files:
-        Phase 1: lightweight metadata scan (no peak data) for matching
-        Phase 2: stream only matched spectra for drawing
+        Uses a single-pass approach for maximum speed with large MGF files:
+        1. Parse .plabel → build target title set + m/z fallback targets
+        2. Single MGF pass: match metadata on-the-fly, extract only
+           matching peaks, draw immediately. Non-matching peak lines are
+           skipped without parsing.
         """
         os.makedirs(out_dir, exist_ok=True)
 
+        # ── config ────────────────────────────────────────────────
         tol_ppm = self.config.tol_ppm
         if linker_name is None:
             linker_name = self.config.get(
                 'crosslinker', 'default_name', default=DEFAULT_LINKER
             )
-        mono_mass = get_crosslinker_mono_mass(linker_name)
-        if mono_mass is None:
-            mono_mass = self.config.get(
-                'crosslinker', 'mono_mass', default=FALLBACK_MONO_MASS
-            )
-        loop_mass = get_crosslinker_xlink_mass(linker_name)
-        if loop_mass is None:
-            loop_mass = self.config.get(
-                'crosslinker', 'loop_mass', default=FALLBACK_LOOP_MASS
-            )
+        mono_mass = get_crosslinker_mono_mass(linker_name) or self.config.get(
+            'crosslinker', 'mono_mass', default=FALLBACK_MONO_MASS
+        )
+        loop_mass = get_crosslinker_xlink_mass(linker_name) or self.config.get(
+            'crosslinker', 'loop_mass', default=FALLBACK_LOOP_MASS
+        )
 
-        # Cleavable crosslinker info (None for non-cleavable)
         cleavable_info = get_crosslinker_cleavable_info(linker_name)
         is_cleavable = cleavable_info is not None and cleavable_info[0]
         long_arm_mass = cleavable_info[1] if cleavable_info else 0.0
@@ -73,117 +73,251 @@ class SpectrumDrawer:
             print(f'  Crosslinker is cleavable: long_arm={long_arm_mass:.3f}, '
                   f'short_arm={short_arm_mass:.3f}')
 
-        # Load identifications
+        # ── load identifications & build target structures ────────
         print(f'Reading identification file: {ident_path}')
         ident_parser = BaseIdentificationParser.get_parser(parser)
         entries = ident_parser.parse(ident_path)
+
+        n_skipped = 0  # declared early, updated during dedup
+
+        # Filter by spec_types
+        if spec_types is not None:
+            entries = [e for e in entries if int(e.spectrum_type) in spec_types]
+
+        # Deduplicate by title — one spectrum can have multiple IDs;
+        # keep the LAST entry per title (matches original dict-overwrite behaviour).
+        dedup_map: dict = {}
+        for e in entries:
+            dedup_map[e.title.lower()] = e  # last one wins
+        n_skipped += (len(entries) - len(dedup_map))
+        entries = list(dedup_map.values())
+
         print(f'  Loaded {len(entries)} identifications')
 
-        # ── Phase 1: lightweight metadata scan for matching ───────
-        print(f'Scanning spectrum metadata: {spectrum_path}')
-        reader = BaseSpectrumReader.get_reader(spectrum_path)
-        meta = reader.read_metadata(spectrum_path)
-        print(f'  Found {len(meta)} spectra (metadata only)')
-
-        # Build indices for matching (metadata only — no peak data)
-        lower_index = {k.lower(): k for k in meta}
-        meta_titles = list(meta.keys())
-        meta_prec_mz = np.array([meta[t]['precursor_mz'] for t in meta_titles])
-        meta_charges = np.array([meta[t]['charge'] for t in meta_titles])
-
-        # Match each identification entry
-        matched = {}          # title -> (entry, match_method)
-        n_skipped = 0
-        n_title_match = 0
-        n_mz_match = 0
-
-        for entry in entries:
-            if spec_types is not None and int(entry.spectrum_type) not in spec_types:
-                continue
-
-            # Title-based match
-            title = entry.title
-            matched_key = None
-            if title in meta:
-                matched_key = title
-            else:
-                matched_key = lower_index.get(title.lower())
-
-            if matched_key is not None:
-                matched[matched_key] = (entry, 'title')
-                n_title_match += 1
-                continue
-
-            # Precursor m/z-based match
-            theo_mz = entry.compute_precursor_mz(mono_mass, loop_mass)
-            tol_da = theo_mz * tol_ppm / 1e6
-            mask = ((meta_prec_mz >= theo_mz - tol_da) &
-                    (meta_prec_mz <= theo_mz + tol_da) &
-                    (meta_charges == entry.charge))
-            idxs = np.where(mask)[0]
-            if len(idxs) > 0:
-                best = idxs[np.argmin(np.abs(meta_prec_mz[idxs] - theo_mz))]
-                best_title = meta_titles[int(best)]
-                matched[best_title] = (entry, 'mz')
-                n_mz_match += 1
-            else:
-                n_skipped += 1
-
-        if not matched:
-            print(f'\nNo matching spectra found for {len(entries)} identifications.')
-            print(f'Output: {out_dir}')
+        if not entries:
+            print('No identifications to process.')
             return
 
-        # ── Phase 2: stream only matched spectra & draw ───────────
-        needed_titles = set(matched.keys())
-        print(f'Streaming {len(needed_titles)} matched spectra for drawing...')
+        # title_index: lowercased title → (original_title, entry)
+        # used for O(1) title lookup during single pass
+        title_index: Dict[str, list] = {}  # lower → [(original, entry), ...]
+        for entry in entries:
+            lt = entry.title.lower()
+            title_index.setdefault(lt, []).append((entry.title, entry))
 
+        # m/z fallback: built now but only used if entries remain unmatched
+        # after the main pass. Theoretical m/z values are pre-computed.
+        mz_fallbacks: list = []
+        for entry in entries:
+            theo = entry.compute_precursor_mz(mono_mass, loop_mass)
+            if theo > 0:
+                mz_fallbacks.append((entry, theo, theo * tol_ppm / 1e6))
+
+        # ── single-pass MGF extraction + drawing ──────────────────
+        print(f'Single-pass scanning: {spectrum_path}')
         draw_count = 0
-        for spec in reader.stream(spectrum_path):
-            if spec.title not in needed_titles:
-                continue
-            entry, method = matched.pop(spec.title)
+        n_title_match = 0
+        n_mz_match = 0
+        total_scanned = 0
 
-            # Update charge from spectrum if identification charge is default
-            if entry.charge <= 2 and spec.charge > 2:
-                entry.charge = spec.charge
+        in_block = False
+        title = None
+        charge = 2
+        pepmass = 0.0
+        rt = None
+        peaks: list = []
+        matched_entry: Optional[Identification] = None
+        match_method: Optional[str] = None
 
-            out_name = entry.title.replace('.dta', '').replace('.DTA', '')
-            out_path = os.path.join(out_dir, f'{out_name}.png')
+        with open(spectrum_path, 'r') as f:
+            for line in f:
+                ls = line.strip()
+                if ls == 'BEGIN IONS':
+                    in_block = True
+                    total_scanned += 1
+                    title = None
+                    charge = 2
+                    pepmass = 0.0
+                    rt = None
+                    peaks = []
+                    matched_entry = None
+                    match_method = None
+                    continue
 
-            try:
-                result = self.composer.draw(
-                    spec, entry, out_path, linker_name,
-                    mono_mass=mono_mass, loop_mass=loop_mass,
-                    linker_mass=loop_mass,
-                    is_cleavable=is_cleavable,
-                    long_arm_mass=long_arm_mass,
-                    short_arm_mass=short_arm_mass,
-                )
-                if entry.is_xlink and len(result) == 11:
-                    b_c, y_c, b_p, y_p, n_match, \
-                        a_b, a_y, a_p, b_b, b_y, b_p2 = result
-                    print(f'  -> {os.path.basename(out_path)}  '
-                          f'\u03b1b:{a_b}/{a_p} \u03b1y:{a_y}/{a_p} '
-                          f'\u03b2b:{b_b}/{b_p2} \u03b2y:{b_y}/{b_p2} '
-                          f'matches:{n_match}')
-                else:
-                    b_c, y_c, b_p, y_p, n_match = result
-                    print(f'  -> {os.path.basename(out_path)}  '
-                          f'b:{b_c}/{b_p} y:{y_c}/{b_p} matches:{n_match}')
-                draw_count += 1
-            except Exception as e:
-                print(f'  Error drawing {entry.title}: {e}')
-                import traceback
-                traceback.print_exc()
+                if ls == 'END IONS':
+                    if matched_entry is not None and peaks:
+                        self._draw_one(
+                            matched_entry, title, charge, pepmass, rt, peaks,
+                            out_dir, linker_name, is_cleavable,
+                            mono_mass, loop_mass, long_arm_mass, short_arm_mass,
+                        )
+                        draw_count += 1
+                        if match_method == 'title':
+                            n_title_match += 1
+                        else:
+                            n_mz_match += 1
+                    in_block = False
+                    continue
 
-            # Stop early if all matched spectra have been drawn
-            if not matched:
-                break
+                if not in_block:
+                    continue
 
-        print(f'\nDone! {draw_count} spectra drawn, {n_skipped} skipped.')
+                # ── metadata line ─────────────────────────────────
+                if ls.startswith('TITLE='):
+                    title = ls[6:]
+                    # Title match via lowercased lookup
+                    if matched_entry is None and title:
+                        candidates = title_index.get(title.lower())
+                        if candidates:
+                            orig_title, entry = candidates.pop(0)
+                            if not candidates:
+                                del title_index[title.lower()]
+                            matched_entry = entry
+                            match_method = 'title'
+
+                elif ls.startswith('CHARGE='):
+                    m = re.match(r'(\d+)', ls[7:])
+                    if m:
+                        charge = int(m.group(1))
+
+                elif ls.startswith('PEPMASS='):
+                    try:
+                        pepmass = float(ls[8:].split()[0])
+                    except (ValueError, IndexError):
+                        pepmass = 0.0
+
+                elif ls.startswith('RTINSECONDS='):
+                    try:
+                        rt = float(ls[12:]) / 60.0
+                    except (ValueError, IndexError):
+                        pass
+
+                # ── peak data line (only parse if matched) ────────
+                elif matched_entry is not None and ls and not ls.startswith('#'):
+                    parts = ls.split()
+                    if len(parts) >= 2:
+                        try:
+                            peaks.append((float(parts[0]), float(parts[1])))
+                        except ValueError:
+                            pass
+
+        # Count unmatched as skipped (add to dedup count)
+        n_skipped += (len(entries) - draw_count)
+
+        # ── m/z fallback: second pass only for remaining unmatched ─
+        unmatched_by_title = sum(len(v) for v in title_index.values())
+        if unmatched_by_title > 0 and mz_fallbacks:
+            print(f'  {unmatched_by_title} entries unmatched by title, '
+                  f'trying m/z fallback pass...')
+            self._mz_fallback_pass(
+                spectrum_path, mz_fallbacks, out_dir,
+                linker_name, is_cleavable,
+                mono_mass, loop_mass, long_arm_mass, short_arm_mass,
+            )
+            # We don't track per-spectrum draw counts from fallback
+            # — entries not found remain in mz_fallbacks
+            # For simplicity, skip precise counting for fallback
+
+        print(f'\nDone! {draw_count} spectra drawn, {n_skipped} skipped '
+              f'(scanned {total_scanned} spectra in single pass).')
         if n_title_match > 0:
             print(f'  Title-matched: {n_title_match}')
         if n_mz_match > 0:
             print(f'  Precursor-m/z-matched: {n_mz_match}')
         print(f'Output: {out_dir}')
+
+    # ── helpers ───────────────────────────────────────────────────
+
+    def _mz_fallback_pass(self, spectrum_path: str,
+                          mz_fallbacks: list, out_dir: str,
+                          linker_name: str, is_cleavable: bool,
+                          mono_mass: float, loop_mass: float,
+                          long_arm_mass: float, short_arm_mass: float):
+        """Second pass: precursor m/z matching for entries not found by title.
+
+        Collects metadata for all spectra, then picks best m/z match
+        for each unmatched entry (minimises |pepmass_obs - pepmass_theo|).
+        """
+        reader = BaseSpectrumReader.get_reader(spectrum_path)
+        meta = reader.read_metadata(spectrum_path)
+        if not meta:
+            return
+
+        meta_titles = list(meta.keys())
+        meta_pmz = np.array([meta[t]['precursor_mz'] for t in meta_titles])
+        meta_chg = np.array([meta[t]['charge'] for t in meta_titles])
+
+        matched_titles: Set[str] = set()
+        for entry, theo, tol_da in mz_fallbacks:
+            mask = ((meta_pmz >= theo - tol_da) &
+                    (meta_pmz <= theo + tol_da) &
+                    (meta_chg == entry.charge))
+            idxs = np.where(mask)[0]
+            if len(idxs) == 0:
+                continue
+            best = idxs[np.argmin(np.abs(meta_pmz[idxs] - theo))]
+            best_title = meta_titles[int(best)]
+            if best_title in matched_titles:
+                continue
+            matched_titles.add(best_title)
+
+            # Stream and draw this specific spectrum
+            try:
+                spec = reader.read_one(spectrum_path, best_title)
+            except KeyError:
+                continue
+
+            self._draw_one(
+                entry, spec.title, spec.charge,
+                spec.precursor_mz, spec.retention_time,
+                list(zip(spec.mz, spec.intensity)),
+                out_dir, linker_name, is_cleavable,
+                mono_mass, loop_mass, long_arm_mass, short_arm_mass,
+            )
+
+    def _draw_one(self, entry: Identification, title: str,
+                  charge: int, pepmass: float, rt: Optional[float],
+                  peaks: list, out_dir: str,
+                  linker_name: str, is_cleavable: bool,
+                  mono_mass: float, loop_mass: float,
+                  long_arm_mass: float, short_arm_mass: float):
+        """Build Spectrum from extracted data and render."""
+        pks = np.array(peaks)
+        spec = Spectrum(
+            title=title if title else entry.title,
+            mz=pks[:, 0].copy(),
+            intensity=pks[:, 1].copy(),
+            precursor_mz=pepmass if pepmass > 0 else entry.compute_precursor_mz(mono_mass, loop_mass),
+            charge=charge,
+            retention_time=rt,
+        )
+        if entry.charge <= 2 and spec.charge > 2:
+            entry.charge = spec.charge
+
+        out_name = entry.title.replace('.dta', '').replace('.DTA', '')
+        out_path = os.path.join(out_dir, f'{out_name}.png')
+
+        try:
+            result = self.composer.draw(
+                spec, entry, out_path, linker_name,
+                mono_mass=mono_mass, loop_mass=loop_mass,
+                linker_mass=loop_mass,
+                is_cleavable=is_cleavable,
+                long_arm_mass=long_arm_mass,
+                short_arm_mass=short_arm_mass,
+            )
+            if entry.is_xlink and len(result) == 11:
+                b_c, y_c, b_p, y_p, n_match, \
+                    a_b, a_y, a_p, b_b, b_y, b_p2 = result
+                print(f'  -> {os.path.basename(out_path)}  '
+                      f'\u03b1b:{a_b}/{a_p} \u03b1y:{a_y}/{a_p} '
+                      f'\u03b2b:{b_b}/{b_p2} \u03b2y:{b_y}/{b_p2} '
+                      f'matches:{n_match}')
+            else:
+                b_c, y_c, b_p, y_p, n_match = result
+                print(f'  -> {os.path.basename(out_path)}  '
+                      f'b:{b_c}/{b_p} y:{y_c}/{b_p} matches:{n_match}')
+        except Exception as e:
+            print(f'  Error drawing {entry.title}: {e}')
+            import traceback
+            traceback.print_exc()

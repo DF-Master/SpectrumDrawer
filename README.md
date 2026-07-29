@@ -190,12 +190,11 @@ SpectrumDrawer/
 
 ## 支持的交联剂
 
-交联剂定义在 `database/xlink.ini` 中，可以使用pFind/pLink的相关文件替换，当前测试支持：
+交联剂定义在 `database/xlink.ini` 中，可以使用pFind/pLink的相关文件替换，当前测试文件包含：
 
 | 交联剂      | 类型     | 说明                             |
 | ----------- | -------- | -------------------------------- |
 | BS3         | 非可裂解 | 常规胺基反应交联剂               |
-| DSS         | 非可裂解 | 与 BS3 同分异构                  |
 | BDG-H       | 可裂解   | 带 long arm / short arm 裂解特征 |
 | SDA(DESTHY) | 可裂解   | 光反应交联剂，可裂解             |
 

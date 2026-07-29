@@ -24,10 +24,12 @@ class BaseIdentificationParser(ABC):
         """Factory: return appropriate parser by name."""
         from .psimxl_parser import PsimxlParser
         from .plink_parser import PlinkParser
+        from .pfind_parser import PfindParser
         parsers = {
             'psimxl': PsimxlParser,
             'simxl': PsimxlParser,
             'plink': PlinkParser,
+            'pfind': PfindParser,
         }
         if parser_name.lower() in parsers:
             return parsers[parser_name.lower()]()

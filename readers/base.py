@@ -1,7 +1,7 @@
 """Abstract base class for spectrum file readers."""
 
 from abc import ABC, abstractmethod
-from typing import Dict, List
+from typing import Dict, Iterator, List
 from ..models import Spectrum
 
 
@@ -22,6 +22,22 @@ class BaseSpectrumReader(ABC):
     @abstractmethod
     def read_one(self, path: str, title: str) -> Spectrum:
         """Read a single spectrum by title."""
+        ...
+
+    @abstractmethod
+    def stream(self, path: str) -> Iterator[Spectrum]:
+        """Yield Spectrum objects one at a time (memory-efficient for large files)."""
+        ...
+
+    @abstractmethod
+    def read_metadata(self, path: str) -> Dict[str, dict]:
+        """Read lightweight metadata for all spectra (no peak data).
+
+        Returns
+        -------
+        dict
+            {title: {'charge': int, 'precursor_mz': float, 'retention_time': float|None}}
+        """
         ...
 
     @staticmethod

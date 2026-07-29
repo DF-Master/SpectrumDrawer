@@ -42,9 +42,9 @@ class SpectrumDrawer:
             spec_types: Optional[List[int]] = None):
         """Run the full pipeline: load → match → draw.
 
-        Matching is tried in two phases:
-        1. Title-based exact match (fast, preferred)
-        2. Precursor m/z-based match (fallback for pLink-style data)
+        Uses a two-phase approach for memory efficiency with large MGF files:
+        Phase 1: lightweight metadata scan (no peak data) for matching
+        Phase 2: stream only matched spectra for drawing
         """
         os.makedirs(out_dir, exist_ok=True)
 
@@ -73,25 +73,26 @@ class SpectrumDrawer:
             print(f'  Crosslinker is cleavable: long_arm={long_arm_mass:.3f}, '
                   f'short_arm={short_arm_mass:.3f}')
 
-        # Load spectra
-        print(f'Reading spectrum file: {spectrum_path}')
-        reader = BaseSpectrumReader.get_reader(spectrum_path)
-        spectra = reader.read(spectrum_path)
-        print(f'  Loaded {len(spectra)} spectra')
-
         # Load identifications
         print(f'Reading identification file: {ident_path}')
         ident_parser = BaseIdentificationParser.get_parser(parser)
         entries = ident_parser.parse(ident_path)
         print(f'  Loaded {len(entries)} identifications')
 
-        # Build precursor m/z index and lowercase title index for matching
-        spec_list = list(spectra.values())
-        spec_prec_mz = np.array([s.precursor_mz for s in spec_list])
-        lower_index = {k.lower(): k for k in spectra}  # pre-built for O(1) lookup
+        # ── Phase 1: lightweight metadata scan for matching ───────
+        print(f'Scanning spectrum metadata: {spectrum_path}')
+        reader = BaseSpectrumReader.get_reader(spectrum_path)
+        meta = reader.read_metadata(spectrum_path)
+        print(f'  Found {len(meta)} spectra (metadata only)')
 
-        # Count matching method usage
-        draw_count = 0
+        # Build indices for matching (metadata only — no peak data)
+        lower_index = {k.lower(): k for k in meta}
+        meta_titles = list(meta.keys())
+        meta_prec_mz = np.array([meta[t]['precursor_mz'] for t in meta_titles])
+        meta_charges = np.array([meta[t]['charge'] for t in meta_titles])
+
+        # Match each identification entry
+        matched = {}          # title -> (entry, match_method)
         n_skipped = 0
         n_title_match = 0
         n_mz_match = 0
@@ -100,43 +101,66 @@ class SpectrumDrawer:
             if spec_types is not None and int(entry.spectrum_type) not in spec_types:
                 continue
 
-            # Phase 1: title-based match
-            spectrum = self._match_by_title(spectra, lower_index, entry)
-
-            # Phase 2: precursor m/z match
-            if spectrum is None:
-                spectrum = self._match_by_precursor_mz(
-                    spec_list, spec_prec_mz, entry,
-                    mono_link_mass=mono_mass, loop_link_mass=loop_mass,
-                    tol_ppm=tol_ppm
-                )
-                if spectrum is not None:
-                    n_mz_match += 1
+            # Title-based match
+            title = entry.title
+            matched_key = None
+            if title in meta:
+                matched_key = title
             else:
-                n_title_match += 1
+                matched_key = lower_index.get(title.lower())
 
-            if spectrum is None:
-                n_skipped += 1
+            if matched_key is not None:
+                matched[matched_key] = (entry, 'title')
+                n_title_match += 1
                 continue
 
-            # Update charge from spectrum if identification charge is default/unknown
-            if entry.charge <= 2 and spectrum.charge > 2:
-                entry.charge = spectrum.charge
+            # Precursor m/z-based match
+            theo_mz = entry.compute_precursor_mz(mono_mass, loop_mass)
+            tol_da = theo_mz * tol_ppm / 1e6
+            mask = ((meta_prec_mz >= theo_mz - tol_da) &
+                    (meta_prec_mz <= theo_mz + tol_da) &
+                    (meta_charges == entry.charge))
+            idxs = np.where(mask)[0]
+            if len(idxs) > 0:
+                best = idxs[np.argmin(np.abs(meta_prec_mz[idxs] - theo_mz))]
+                best_title = meta_titles[int(best)]
+                matched[best_title] = (entry, 'mz')
+                n_mz_match += 1
+            else:
+                n_skipped += 1
+
+        if not matched:
+            print(f'\nNo matching spectra found for {len(entries)} identifications.')
+            print(f'Output: {out_dir}')
+            return
+
+        # ── Phase 2: stream only matched spectra & draw ───────────
+        needed_titles = set(matched.keys())
+        print(f'Streaming {len(needed_titles)} matched spectra for drawing...')
+
+        draw_count = 0
+        for spec in reader.stream(spectrum_path):
+            if spec.title not in needed_titles:
+                continue
+            entry, method = matched.pop(spec.title)
+
+            # Update charge from spectrum if identification charge is default
+            if entry.charge <= 2 and spec.charge > 2:
+                entry.charge = spec.charge
 
             out_name = entry.title.replace('.dta', '').replace('.DTA', '')
             out_path = os.path.join(out_dir, f'{out_name}.png')
 
             try:
                 result = self.composer.draw(
-                    spectrum, entry, out_path, linker_name,
+                    spec, entry, out_path, linker_name,
                     mono_mass=mono_mass, loop_mass=loop_mass,
-                    linker_mass=loop_mass,  # xlink mass = dead-end mass
+                    linker_mass=loop_mass,
                     is_cleavable=is_cleavable,
                     long_arm_mass=long_arm_mass,
                     short_arm_mass=short_arm_mass,
                 )
                 if entry.is_xlink and len(result) == 11:
-                    # Chain-specific counts for xlink
                     b_c, y_c, b_p, y_p, n_match, \
                         a_b, a_y, a_p, b_b, b_y, b_p2 = result
                     print(f'  -> {os.path.basename(out_path)}  '
@@ -146,12 +170,16 @@ class SpectrumDrawer:
                 else:
                     b_c, y_c, b_p, y_p, n_match = result
                     print(f'  -> {os.path.basename(out_path)}  '
-                          f'b:{b_c}/{b_p} y:{y_c}/{y_p} matches:{n_match}')
+                          f'b:{b_c}/{b_p} y:{y_c}/{b_p} matches:{n_match}')
                 draw_count += 1
             except Exception as e:
                 print(f'  Error drawing {entry.title}: {e}')
                 import traceback
                 traceback.print_exc()
+
+            # Stop early if all matched spectra have been drawn
+            if not matched:
+                break
 
         print(f'\nDone! {draw_count} spectra drawn, {n_skipped} skipped.')
         if n_title_match > 0:
@@ -159,40 +187,3 @@ class SpectrumDrawer:
         if n_mz_match > 0:
             print(f'  Precursor-m/z-matched: {n_mz_match}')
         print(f'Output: {out_dir}')
-
-    @staticmethod
-    def _match_by_title(spectra: dict, lower_index: dict,
-                        entry: Identification) -> Optional[Spectrum]:
-        """Match by exact title, with case-insensitive fallback via pre-built index."""
-        title = entry.title
-        if title in spectra:
-            return spectra[title]
-        key = lower_index.get(title.lower())
-        if key is not None:
-            return spectra[key]
-        return None
-
-    @staticmethod
-    def _match_by_precursor_mz(spec_list: List[Spectrum],
-                               spec_prec_mz: np.ndarray,
-                               entry: Identification,
-                               mono_link_mass: float = FALLBACK_MONO_MASS,
-                               loop_link_mass: float = FALLBACK_LOOP_MASS,
-                               tol_ppm: float = 20.0
-                               ) -> Optional[Spectrum]:
-        """Match by theoretical precursor m/z within tolerance."""
-        theo_mz = entry.compute_precursor_mz(mono_link_mass, loop_link_mass)
-        tol_da = theo_mz * tol_ppm / 1e6
-
-        # Find spectra within tolerance window with matching charge
-        mask = (spec_prec_mz >= theo_mz - tol_da) & (spec_prec_mz <= theo_mz + tol_da)
-        candidates = [(i, spec_prec_mz[i])
-                      for i in np.where(mask)[0]
-                      if spec_list[i].charge == entry.charge]
-
-        if not candidates:
-            return None
-
-        # Pick closest m/z match
-        best_idx = min(candidates, key=lambda x: abs(x[1] - theo_mz))[0]
-        return spec_list[best_idx]

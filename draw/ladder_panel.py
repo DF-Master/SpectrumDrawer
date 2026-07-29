@@ -310,9 +310,9 @@ def draw_xlink_ladder_panel(ax, alpha_seq: str, beta_seq: str,
     residue_color = config.get('residue_color', '#111111')
     ion_fs = config.get('ion_label_fontsize', 8)
 
-    # Charge label (centered between chains)
-    mid_first_x = (first_x_a + first_x_b) / 2
-    ax.text(mid_first_x - spacing * 0.35, seq_y_a + 0.85, f'{charge}+',
+    # Charge label (left-aligned with the leftmost chain start)
+    leftmost_first_x = min(first_x_a, first_x_b)
+    ax.text(leftmost_first_x - spacing * 0.35, seq_y_a + 1.2, f'{charge}+',
             ha='center', va='bottom',
             fontsize=config.get('charge_label_fontsize', 11),
             fontweight='bold',

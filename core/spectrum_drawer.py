@@ -135,9 +135,18 @@ class SpectrumDrawer:
                     long_arm_mass=long_arm_mass,
                     short_arm_mass=short_arm_mass,
                 )
-                b_c, y_c, b_p, y_p, n_match = result
-                print(f'  -> {os.path.basename(out_path)}  '
-                      f'b:{b_c}/{b_p} y:{y_c}/{y_p} matches:{n_match}')
+                if entry.is_xlink and len(result) == 11:
+                    # Chain-specific counts for xlink
+                    b_c, y_c, b_p, y_p, n_match, \
+                        a_b, a_y, a_p, b_b, b_y, b_p2 = result
+                    print(f'  -> {os.path.basename(out_path)}  '
+                          f'\u03b1b:{a_b}/{a_p} \u03b1y:{a_y}/{a_p} '
+                          f'\u03b2b:{b_b}/{b_p2} \u03b2y:{b_y}/{b_p2} '
+                          f'matches:{n_match}')
+                else:
+                    b_c, y_c, b_p, y_p, n_match = result
+                    print(f'  -> {os.path.basename(out_path)}  '
+                          f'b:{b_c}/{b_p} y:{y_c}/{y_p} matches:{n_match}')
                 draw_count += 1
             except Exception as e:
                 print(f'  Error drawing {entry.title}: {e}')

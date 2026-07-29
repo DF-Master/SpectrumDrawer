@@ -11,7 +11,8 @@ from ..config import ConfigManager
 from ..utils import (
     calc_theoretical_frags, match_fragments, build_fragment_status,
     count_coverage, build_proforma, build_mod_dict_from_identification,
-    build_meta_string, calc_cleavable_frags, deduplicate_frags,
+    build_meta_string, build_xlink_meta_string, calc_cleavable_frags,
+    deduplicate_frags,
     calc_precursor_mz,
     calc_neutral_loss_frags, calc_neutral_loss_cleavable_frags,
     get_nl_info_from_identification,
@@ -194,13 +195,27 @@ class FigureComposer:
                             seen.update(nl_clv_final)
 
             fstat = build_fragment_status(all_matches)
+
+            # Chain-specific b/y counts (regular ions only, not lc/sc)
+            def _count_chain_ions(prefix):
+                return len({
+                    k.rstrip('*') for k in fstat
+                    if k.startswith(f'{prefix}b') and '[' not in k
+                    and not k.endswith('lc') and not k.endswith('sc')
+                }), len({
+                    k.rstrip('*') for k in fstat
+                    if k.startswith(f'{prefix}y') and '[' not in k
+                    and not k.endswith('lc') and not k.endswith('sc')
+                })
+
+            alpha_b_count, alpha_y_count = _count_chain_ions('α')
+            beta_b_count, beta_y_count = _count_chain_ions('β')
+
+            # Total counts for return value
+            b_count = alpha_b_count + beta_b_count
+            y_count = alpha_y_count + beta_y_count
             b_p = (len(ident.alpha_seq) - 1) + (len(ident.beta_seq) - 1)
             y_p = b_p
-            # Count b/y positions using ion_type values (αb/βb/αy/βy + lc/sc variants)
-            b_types = {'αb', 'βb', 'αblc', 'αbsc', 'βblc', 'βbsc'}
-            y_types = {'αy', 'βy', 'αylc', 'αysc', 'βylc', 'βysc'}
-            b_count = len({k.rstrip('*') for k, v in fstat.items() if v in b_types})
-            y_count = len({k.rstrip('*') for k, v in fstat.items() if v in y_types})
 
             # Cross-link precursor matches
             precursor_matches = _build_xlink_precursor_matches(
@@ -396,21 +411,51 @@ class FigureComposer:
         left_frac = fig_cfg.get('left_margin', 0.07)
         spec_name = ident.title.replace('.dta', '')
 
+        if ident.is_xlink:
+            meta = build_xlink_meta_string(
+                ident.alpha_seq, ident.beta_seq, ident.charge,
+                alpha_mods, beta_mods,
+                alpha_show, beta_show,
+                ident.alpha_xlink_site, ident.beta_xlink_site,
+                ident.linker_name,
+                alpha_b_count, alpha_y_count,
+                beta_b_count, beta_y_count,
+                tol_ppm, ident=ident,
+                linker_abbr_len=title_cfg.get('linker_abbr_len', 3),
+                mod_abbr_len=title_cfg.get('mod_abbr_len', 3))
+        else:
+            meta = build_meta_string(ident, mods_dict, mod_show,
+                                     b_count, y_count, tol_ppm,
+                                     mod_abbr_len=title_cfg.get('mod_abbr_len', 3),
+                                     linker_abbr_len=title_cfg.get('linker_abbr_len', 3))
+
+        # Auto-shrink font if text exceeds available width
+        meta_fontsize = title_cfg.get('meta_fontsize', 9.5)
+        spec_name_fontsize = title_cfg.get('spec_name_fontsize', 9.5)
+        right_frac = fig_cfg.get('right_margin', 0.97)
+        available_width = right_frac - left_frac
+
+        # Estimate text width (rough: 0.6 * fontsize * len(text) / fig_width_inches)
+        # Use a conservative factor for monospace-like estimation
+        fig_width_inches = fig_cfg.get('width_inches', 10.0)
+        char_width_factor = 0.55  # approximate width per char at fontsize=1
+
+        spec_name_width = len(spec_name) * char_width_factor * spec_name_fontsize / (fig_width_inches * 72)
+        meta_width = len(meta) * char_width_factor * meta_fontsize / (fig_width_inches * 72)
+
+        # Shrink spec_name if needed
+        if spec_name_width > available_width:
+            spec_name_fontsize *= available_width / spec_name_width
         fig.text(left_frac, 0.97, spec_name,
-                 fontsize=title_cfg.get('spec_name_fontsize', 9.5),
+                 fontsize=spec_name_fontsize,
                  color=title_cfg.get('spec_name_color', '#333333'),
                  fontweight='bold', va='top', ha='left')
 
-        if ident.is_xlink:
-            meta = (f'{ident.alpha_seq}--{ident.beta_seq}  '
-                    f'z={ident.charge}  xlink  |  '
-                    f'b:{b_count}/{b_p}  y:{y_count}/{y_p}  |  '
-                    f'\u00b1{tol_ppm} ppm')
-        else:
-            meta = build_meta_string(ident, mods_dict, mod_show,
-                                     b_count, y_count, tol_ppm)
+        # Shrink meta if needed
+        if meta_width > available_width:
+            meta_fontsize *= available_width / meta_width
         fig.text(left_frac, 0.935, meta,
-                 fontsize=title_cfg.get('meta_fontsize', 9.5),
+                 fontsize=meta_fontsize,
                  color=title_cfg.get('meta_color', '#000000'),
                  fontweight='bold', va='top', ha='left')
 
@@ -441,6 +486,13 @@ class FigureComposer:
                     facecolor='white', edgecolor='none')
         plt.close(fig)
 
+        # Return chain-specific counts for xlink
+        if ident.is_xlink:
+            n_a = len(ident.alpha_seq) - 1
+            n_b = len(ident.beta_seq) - 1
+            return (b_count, y_count, b_p, y_p, len(all_matches),
+                    alpha_b_count, alpha_y_count, n_a,
+                    beta_b_count, beta_y_count, n_b)
         return b_count, y_count, b_p, y_p, len(all_matches)
 
 

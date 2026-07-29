@@ -306,10 +306,10 @@ def compute_xlink_precursor_mz(ident: Identification,
     return (total + charge * PROTON) / charge
 
 
-def _abbreviate_mod_name(mod_full_name: str) -> str:
+def _abbreviate_mod_name(mod_full_name: str, abbr_len: int = 3) -> str:
     """Generate abbreviation from a modification full name.
 
-    Parses the name part before '[' and returns its first 3 characters
+    Parses the name part before '[' and returns its first `abbr_len` characters
     uppercased as the abbreviation. Works for both fixed and variable
     modifications.
 
@@ -321,12 +321,14 @@ def _abbreviate_mod_name(mod_full_name: str) -> str:
     'Acetyl[K]' -> 'ACE'
     """
     name = mod_full_name.split('[')[0]
-    return name[:3].upper()
+    return name[:abbr_len].upper()
 
 
 def build_meta_string(ident: Identification, mods_dict: Dict[int, float],
                       mod_show: set, b_count: int, y_count: int,
-                      tol_ppm: float) -> str:
+                      tol_ppm: float,
+                      mod_abbr_len: int = 3,
+                      linker_abbr_len: int = 3) -> str:
     """Build metadata string for figure title.
 
     Parameters
@@ -338,6 +340,10 @@ def build_meta_string(ident: Identification, mods_dict: Dict[int, float],
         Number of matched b/y ions.
     tol_ppm : float
         Mass tolerance in ppm.
+    mod_abbr_len : int
+        Max characters for modification abbreviation (default 3).
+    linker_abbr_len : int
+        Max characters for crosslinker abbreviation (default 3).
 
     Returns
     -------
@@ -360,7 +366,7 @@ def build_meta_string(ident: Identification, mods_dict: Dict[int, float],
             if aa in FIX_MODS and abs(mass - FIX_MODS[aa]) < 0.01:
                 # Fixed modification — derive abbreviation from mod name
                 mod_name = FIX_MOD_NAMES.get(aa, '')
-                var_name = _abbreviate_mod_name(mod_name) if mod_name else f'+{mass:.3f}'
+                var_name = _abbreviate_mod_name(mod_name, mod_abbr_len) if mod_name else f'+{mass:.3f}'
                 mod_strs.append(f'{var_name}@{aa}{pos}')
             elif aa in VAR_MODS and abs(mass - VAR_MODS[aa]) < 0.01:
                 # Reserved interface — config-driven variable mod matching.
@@ -369,15 +375,16 @@ def build_meta_string(ident: Identification, mods_dict: Dict[int, float],
                 # because variable mods are auto-detected from
                 # identification data.
                 mod_name = pos_to_varmod.get(pos, '')
-                var_name = _abbreviate_mod_name(mod_name) if mod_name else f'+{mass:.3f}'
+                var_name = _abbreviate_mod_name(mod_name, mod_abbr_len) if mod_name else f'+{mass:.3f}'
                 mod_strs.append(f'{var_name}@{aa}{pos}')
             elif pos in pos_to_varmod:
                 # Other variable modification — derive abbreviation from mod name
                 mod_name = pos_to_varmod[pos]
-                var_name = _abbreviate_mod_name(mod_name) if mod_name else f'+{mass:.3f}'
+                var_name = _abbreviate_mod_name(mod_name, mod_abbr_len) if mod_name else f'+{mass:.3f}'
                 mod_strs.append(f'{var_name}@{aa}{pos}')
             elif ident.is_mono and pos == ident.alpha_xlink_site:
-                mod_strs.append(f'{ident.linker_name}@{aa}{pos}')
+                linker_abbr = ident.linker_name[:linker_abbr_len].upper()
+                mod_strs.append(f'{linker_abbr}@{aa}{pos}')
             elif ident.is_loop and pos in (ident.alpha_xlink_site, ident.beta_xlink_site):
                 # Loop-link sites handled together below
                 pass
@@ -392,7 +399,8 @@ def build_meta_string(ident: Identification, mods_dict: Dict[int, float],
     if ident.is_loop and ident.alpha_xlink_site > 0 and ident.beta_xlink_site > 0:
         s1, s2 = ident.alpha_xlink_site, ident.beta_xlink_site
         aa1, aa2 = seq[s1 - 1], seq[s2 - 1]
-        mod_strs.append(f'{ident.linker_name}@{aa1}{s1}@{aa2}{s2}')
+        linker_abbr = ident.linker_name[:linker_abbr_len].upper()
+        mod_strs.append(f'{linker_abbr}@{aa1}{s1}@{aa2}{s2}')
 
     mod_meta = ' '.join(mod_strs) if mod_strs else 'unmodified'
     if ident.is_loop:
@@ -406,5 +414,114 @@ def build_meta_string(ident: Identification, mods_dict: Dict[int, float],
 
     meta = (f'{seq}  z={ident.charge}  {mod_meta}  ({type_str})  |  '
             f'b:{b_count}/{b_possible}  y:{y_count}/{y_possible}  |  '
+            f'\u00b1{tol_ppm} ppm')
+    return meta
+
+
+def build_xlink_meta_string(
+        alpha_seq: str, beta_seq: str, charge: int,
+        alpha_mods: Dict[int, float], beta_mods: Dict[int, float],
+        alpha_show: set, beta_show: set,
+        alpha_xlink_site: int, beta_xlink_site: int,
+        linker_name: str,
+        alpha_b_count: int, alpha_y_count: int,
+        beta_b_count: int, beta_y_count: int,
+        tol_ppm: float,
+        ident: Identification = None,
+        linker_abbr_len: int = 3,
+        mod_abbr_len: int = 3) -> str:
+    """Build metadata string for cross-link figure title.
+
+    Parameters
+    ----------
+    alpha_seq, beta_seq : str
+        Sequences of α and β chains.
+    charge : int
+        Precursor charge state.
+    alpha_mods, beta_mods : dict
+        {1-based position: mass_delta} for each chain.
+    alpha_show, beta_show : set
+        1-based positions to highlight for each chain.
+    alpha_xlink_site, beta_xlink_site : int
+        1-based crosslink site positions.
+    linker_name : str
+        Crosslinker name (e.g. 'BS3', 'BDG').
+    alpha_b_count, alpha_y_count : int
+        Matched b/y ion counts for α chain.
+    beta_b_count, beta_y_count : int
+        Matched b/y ion counts for β chain.
+    tol_ppm : float
+        Mass tolerance in ppm.
+    ident : Identification, optional
+        For accessing variable modification lists.
+    linker_abbr_len : int
+        Max characters for crosslinker abbreviation (default 3).
+    mod_abbr_len : int
+        Max characters for modification abbreviation (default 3).
+
+    Returns
+    -------
+    str
+    """
+    n_a = len(alpha_seq)
+    n_b = len(beta_seq)
+
+    # Variable modification lookup
+    alpha_varmod = {}
+    beta_varmod = {}
+    if ident is not None:
+        for mod_type, pos in ident.get_alpha_varmod_list():
+            alpha_varmod[pos] = mod_type
+        for mod_type, pos in ident.get_beta_varmod_list():
+            beta_varmod[pos] = mod_type
+
+    def _chain_mod_strs(seq, mods, show, varmod_map, chain_label):
+        """Build modification strings for one chain (excluding xlink site)."""
+        parts = []
+        for pos in sorted(show):
+            if pos == (alpha_xlink_site if chain_label == '\u03b1'
+                       else beta_xlink_site):
+                continue  # handled separately as xlink site
+            if pos not in mods:
+                continue
+            aa = seq[pos - 1]
+            mass = mods[pos]
+            if aa in FIX_MODS and abs(mass - FIX_MODS[aa]) < 0.01:
+                mod_name = FIX_MOD_NAMES.get(aa, '')
+                var_name = _abbreviate_mod_name(mod_name, mod_abbr_len) if mod_name else f'+{mass:.3f}'
+                parts.append(f'{var_name}@{chain_label}{aa}{pos}')
+            elif pos in varmod_map:
+                mod_name = varmod_map[pos]
+                var_name = _abbreviate_mod_name(mod_name, mod_abbr_len) if mod_name else f'+{mass:.3f}'
+                parts.append(f'{var_name}@{chain_label}{aa}{pos}')
+            else:
+                parts.append(f'+{mass:.3f}@{chain_label}{aa}{pos}')
+        return parts
+
+    mod_parts = []
+    mod_parts.extend(_chain_mod_strs(alpha_seq, alpha_mods, alpha_show,
+                                     alpha_varmod, '\u03b1'))
+    mod_parts.extend(_chain_mod_strs(beta_seq, beta_mods, beta_show,
+                                     beta_varmod, '\u03b2'))
+
+    # Crosslink site: "linker@αAAsite@βAAsite"
+    xlink_str = ''
+    if alpha_xlink_site > 0 and beta_xlink_site > 0:
+        aa_a = alpha_seq[alpha_xlink_site - 1]
+        aa_b = beta_seq[beta_xlink_site - 1]
+        # Abbreviate linker name to linker_abbr_len characters
+        linker_abbr = linker_name[:linker_abbr_len].upper()
+        xlink_str = (f'{linker_abbr}@\u03b1{aa_a}{alpha_xlink_site}'
+                     f'@\u03b2{aa_b}{beta_xlink_site}')
+        mod_parts.append(xlink_str)
+
+    mod_meta = ' '.join(mod_parts) if mod_parts else 'unmodified'
+
+    meta = (f'\u03b1:{alpha_seq}  \u03b2:{beta_seq}  '
+            f'z={charge}  {mod_meta}  (xlink)  |  '
+            f'\u03b1b:{alpha_b_count}/{n_a - 1}  '
+            f'\u03b1y:{alpha_y_count}/{n_a - 1}  '
+            f'\u03b2b:{beta_b_count}/{n_b - 1}  '
+            f'\u03b2y:{beta_y_count}/{n_b - 1}  |  '
             f'\u00b1{tol_ppm} ppm')
     return meta

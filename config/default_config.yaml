@@ -97,6 +97,9 @@ title:
   spec_name_color: '#333333'
   meta_fontsize: 9.5
   meta_color: '#000000'
+  # Max characters for crosslinker/modification abbreviations
+  linker_abbr_len: 3
+  mod_abbr_len: 3
 
 # ── Colors ──
 colors:

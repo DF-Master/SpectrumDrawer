@@ -41,6 +41,15 @@ def draw_ladder_panel(ax, seq: str, fstat: Dict[str, str], charge: int,
     x_range = spec_xmax - spec_xmin
     first_x = spec_xmin + x_range * config.get('first_x_fraction', 0.04)
     spacing = x_range * config.get('spacing_fraction', 0.04)
+    
+    # Adaptive spacing: shrink if sequence is too long
+    # Required width = first_x offset + (n-1) * spacing + margin for last residue
+    required_width = (first_x - spec_xmin) + (n - 1) * spacing + spacing * 0.5
+    available_width = x_range * 0.95  # Use 95% of available width
+    if required_width > available_width and n > 1:
+        # Shrink spacing to fit
+        spacing = (available_width - (first_x - spec_xmin)) / (n - 1 + 0.5)
+    
     tick_len = spacing * config.get('tick_len_fraction', 0.14)
 
     seq_y = config.get('seq_y', 0.0)
@@ -281,9 +290,13 @@ def draw_xlink_ladder_panel(ax, alpha_seq: str, beta_seq: str,
     right_span = spacing * max(n_a - 1 - site_a, n_b - 1 - site_b)
     total_span = left_span + right_span
 
-    # Compress spacing if needed to fit within x_range
-    if total_span > x_range * 0.95:
-        spacing *= (x_range * 0.95) / total_span
+    # Reserve space for chain labels (α, β) on the left side
+    label_margin = spacing * 1.5  # Space for chain label
+    available_width = x_range * 0.95 - label_margin
+
+    # Compress spacing if needed to fit within available width
+    if total_span > available_width:
+        spacing *= available_width / total_span
         left_span = spacing * max(site_a, site_b)
         right_span = spacing * max(n_a - 1 - site_a, n_b - 1 - site_b)
         total_span = left_span + right_span

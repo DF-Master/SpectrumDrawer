@@ -2,7 +2,7 @@
 
 MS/MS 谱图可视化工具，专为交联质谱 (Cross-Linking Mass Spectrometry, XL-MS) 数据分析设计。
 
-从 pLink 或 pSimXL 的鉴定结果出发，自动生成带有序列梯子图、谱图注释和质量误差面板的出版级 PNG 图片。
+从 pFind/pLink 或 pSimXL 的鉴定结果出发，自动生成带有序列图、谱图注释和质量误差面板的出版级 PNG 图片。
 
 ![1785298903515](image/README/1785298903515.png)
 
@@ -10,7 +10,7 @@ MS/MS 谱图可视化工具，专为交联质谱 (Cross-Linking Mass Spectrometr
 
 ![1785299563493](image/README/1785299563493.png)
 
-![1785298975700](image/README/1785298975700.png)
+![1785307086035](image/README/1785307086035.png)
 
 ---
 
@@ -19,7 +19,7 @@ MS/MS 谱图可视化工具，专为交联质谱 (Cross-Linking Mass Spectrometr
 - **多种谱图类型**：支持 regular（线性肽段）、mono-link（单端交联）、loop-link（环联）和 cross-link（交联）四种类型
 - **可裂解交联剂**：支持 BDG-H、SDA(DESTHY) 等可裂解交联剂，自动识别 long arm / short arm 离子系列
 - **非可裂解交联剂**：支持 BS3、DSS 等常规交联剂
-- **双解析器**：支持 pLink (.plabel) 和 pSimXL (.csv) 两种鉴定格式
+- **多解析器支持**：支持 pLink (.plabel)、pSimXL (.csv) 和 pFind (.spectra) 三种鉴定格式
 - **自动检测**：从 .plabel 文件名自动推断交联剂名称和谱图类型
 - **三面板输出**：
   - 序列梯子图（b/y 离子括号标注）
@@ -28,6 +28,7 @@ MS/MS 谱图可视化工具，专为交联质谱 (Cross-Linking Mass Spectrometr
 - **前体离子匹配**：完整前体离子、可裂解臂前体离子、中性丢失变体
 - **中性丢失离子**：自动计算并标注带中性丢失的碎片离子
 - **高度可配置**：通过 YAML 配置文件自定义颜色、字体、布局等所有视觉参数
+- **智能标题栏**：交联谱图分别显示 α/β 链覆盖率，标题过长时自动缩放字体
 
 ---
 
@@ -81,6 +82,14 @@ python main.py --mgf spectra.mgf --ident results.cross-linked.BS3.plabel --parse
 
 对于 pLink .plabel 文件，交联剂名称和谱图类型会从文件名中**自动推断**，无需手动指定 `--linker` 和 `--types`。
 
+### pFind 数据
+
+```bash
+python main.py --mgf spectra.mgf --ident pFind-Filtered.spectra --parser pfind -o ./output/
+```
+
+pFind 解析器支持单肽段修饰鉴定结果（regular 类型），自动解析修饰信息。
+
 ### 命令行参数
 
 ```
@@ -89,7 +98,7 @@ python main.py --mgf spectra.mgf --ident results.cross-linked.BS3.plabel --parse
   --ident, --identification  鉴定结果文件路径 (.csv 或 .plabel)
 
 可选参数:
-  --parser        解析器名称 (默认: psimxl，可选: plink)
+  --parser        解析器名称 (默认: psimxl，可选: plink, pfind)
   -o, --out-dir   输出目录 (默认: ./output)
   -c, --config    自定义 YAML 配置文件路径
   --linker        交联剂名称 (pLink 模式下自动检测)
@@ -131,6 +140,7 @@ output/
 | `processing`    | 处理参数（容差 ppm、离子类型、最大电荷态）   |
 | `modifications` | 固定/可变修饰名称列表                        |
 | `crosslinker`   | 默认交联剂名称与质量                         |
+| `title`         | 标题栏配置（字体大小、交联剂/修饰缩写长度）  |
 
 ---
 
@@ -151,7 +161,8 @@ SpectrumDrawer/
 │   └── mgf_reader.py        # MGF 谱图文件读取
 ├── parsers/
 │   ├── plink_parser.py      # pLink .plabel 格式解析
-│   └── psimxl_parser.py     # pSimXL CSV 格式解析
+│   ├── psimxl_parser.py     # pSimXL CSV 格式解析
+│   └── pfind_parser.py      # pFind .spectra 格式解析
 ├── database/
 │   ├── aa.ini               # 氨基酸质量数据
 │   ├── element.ini          # 元素单同位素质量
@@ -210,9 +221,24 @@ SpectrumDrawer/
 
 ## 版本
 
-当前版本：**v0.1.0** (Beta)
+当前版本：**v0.1.1** (Beta)
 
-这是一个预览测试版本，欢迎反馈问题与建议。
+### 更新日志
+
+**v0.1.1**
+
+- 新增 pFind 解析器支持
+- 交联谱图标题栏分别显示 α/β 链覆盖率
+- 标题栏过长时自动缩放字体
+- 交联剂和修饰缩写长度可配置（默认 3 字符）
+- 修复 pSimXL 交联位点索引转换（0-based → 1-based）
+
+**v0.1.0**
+
+- 初始测试版本
+- 支持 pLink 和 pSimXL 解析器
+- 支持 regular、mono-link、loop-link、cross-link 四种谱图类型
+- 支持可裂解和非可裂解交联剂
 
 ---
 

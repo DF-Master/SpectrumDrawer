@@ -6,13 +6,19 @@ pLink3 批量谱图绘制快捷脚本
 
 特性:
   - 支持四种谱图类型: cross-link, mono-link, loop-link, regular
+  - 每种类型独立开关，默认开启 cross-link + mono-link
   - 跳过 /tmps/ 中的 plabel 文件
   - 从 .plabel 的 [FilePath] 段自动读取 MGF 路径 (.pf2 -> .mgf)
-  - 按 MGF 分组，同一 MGF 的多份 plabel 合并为单次文件扫描
+  - 按 MGF 分组合并，同一 MGF 的多份 plabel 单次文件扫描
   - 多进程并行处理 MGF 组（默认 8 进程）
+  - 可调 DPI（默认 100，兼顾速度与质量）
+  - 可跳过 precursor m/z 后备匹配以大幅提速
+
+性能 (140 plabel, 15 MGF, 8 workers, DPI=100, no-fallback):
+  总耗时 ~4.3 min，输出 ~5,650 张 PNG 谱图
 
 用法:
-    # 默认：cross-link + mono-link（8 进程）
+    # 默认：cross-link + mono-link，DPI 100，8 进程，无 fallback
     python scripts/batch_draw_plink.py D:\\MSdata\\...\\pLink
 
     # 开启所有四种类型
@@ -21,8 +27,14 @@ pLink3 批量谱图绘制快捷脚本
     # 只画 regular
     python scripts/batch_draw_plink.py D:\\MSdata\\...\\pLink --no-cross-link --no-mono-link --regular
 
+    # 高 DPI 输出 + 启用 m/z fallback（更慢但更完整）
+    python scripts/batch_draw_plink.py D:\\MSdata\\...\\pLink --dpi 300
+
     # 单进程（调试用）
     python scripts/batch_draw_plink.py D:\\MSdata\\...\\pLink --workers 1
+
+    # 4 进程 + 自定义 DPI
+    python scripts/batch_draw_plink.py D:\\MSdata\\...\\pLink --workers 4 --dpi 150
 
 依赖:
     SpectrumDrawer 框架（同仓库根目录）
@@ -472,14 +484,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  # 默认：cross-link + mono-link，8 进程
+  # 默认：cross-link + mono-link，DPI 100，8 进程
   python scripts/batch_draw_plink.py D:\\MSdata\\...\\pLink
 
   # 开启所有四种类型
   python scripts/batch_draw_plink.py D:\\MSdata\\...\\pLink --loop-link --regular
 
+  # 高 DPI + 完整匹配
+  python scripts/batch_draw_plink.py D:\\MSdata\\...\\pLink --dpi 300
+
   # 自定义并行数
-  python scripts/batch_draw_plink.py D:\\MSdata\\...\\pLink --workers 4
+  python scripts/batch_draw_plink.py D:\\MSdata\\...\\pLink --workers 4 --dpi 150
         """,
     )
     parser.add_argument('pLink_dir',

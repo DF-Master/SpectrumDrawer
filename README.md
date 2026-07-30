@@ -92,6 +92,46 @@ python main.py --mgf spectra.mgf --ident pFind-Filtered.spectra --parser pfind -
 
 pFind 解析器支持单肽段修饰鉴定结果（regular 类型），自动解析修饰信息。
 
+### pLink 批量处理（快捷脚本）
+
+当需要一次性处理 pLink3 搜索输出目录中**所有**结果时，使用 `scripts/batch_draw_plink.py`：
+
+```bash
+# 默认：cross-link + mono-link，DPI 100，8 进程
+python scripts/batch_draw_plink.py D:\MSdata\...\pLink
+
+# 开启所有四种类型 + 高 DPI
+python scripts/batch_draw_plink.py D:\MSdata\...\pLink --loop-link --regular --dpi 300
+
+# 自定义并行数
+python scripts/batch_draw_plink.py D:\MSdata\...\pLink --workers 4
+```
+
+**脚本特性：**
+
+- 自动从 `.plabel` 的 `[FilePath]` 段读取对应 MGF 路径（`.pf2` → `.mgf`）
+- 自动跳过 `/tmps/` 中的中间结果文件
+- 按 MGF 分组合并，同一 MGF 仅扫描一次（大幅减少磁盘 I/O）
+- 多进程并行（默认 8 进程）
+- 每种谱图类型独立开关：`--cross-link` / `--mono-link` / `--loop-link` / `--regular`（及对应 `--no-*` 关闭）
+
+**输出结构：**
+
+```
+pLink/
+├── BDG/
+│   ├── cross-link_png/20260512_all_HCDFT/
+│   ├── mono-link_png/20260512_all_HCDFT/
+│   └── ...
+├── SDA/
+│   ├── cross-link_png/20260512_SDA_plus_HCDFT/
+│   └── ...
+└── ...
+```
+
+**性能参考** (140 plabel, 15 MGF, 8 workers, DPI=100, no-fallback):  
+总耗时 ~4.3 min，输出 ~5,650 张 PNG。
+
 ### 命令行参数
 
 ```
@@ -193,7 +233,7 @@ SpectrumDrawer/
 │   ├── element.ini          # 元素单同位素质量
 │   ├── modification.ini     # 修饰质量数据
 │   ├── xlink.ini            # 交联剂定义
-│   ├── special_ions.ini     # 特殊离子（亚胺离子）数据库
+│   ├── special_ions.ini     # 特殊离子（如亚胺离子）数据库
 │   ├── residues.py          # 残基质量（懒加载）
 │   ├── modifications.py     # 修饰质量（懒加载）
 │   ├── ini_loader.py        # INI 文件解析器
@@ -207,6 +247,8 @@ SpectrumDrawer/
 │   ├── ladder_panel.py      # 序列梯子图绘制
 │   ├── spectrum_panel.py    # 谱图 stick 图绘制
 │   └── mass_error_panel.py  # 质量误差散点图绘制
+├── scripts/
+│   └── batch_draw_plink.py  # pLink3 批量谱图绘制快捷脚本
 └── test/
     ├── test_input/          # 测试数据
     └── output/              # 测试输出
@@ -255,6 +297,7 @@ SpectrumDrawer/
 - 新增特殊离子标注功能：支持亚胺离子 (immonium ions) 等特殊 m/z 离子的自动标注，质量误差面板使用菱形标记区分
 - 新增 `database/special_ions.ini` 数据库文件，预置 20 种常见氨基酸亚胺离子
 - 新增 `--special-ions` 和 `--special-ions-file` CLI 参数
+- 新增pLink批量绘图脚本，多线程并行+减少读取次数，大幅度提升绘图效率
 
 **v0.1.2**
 

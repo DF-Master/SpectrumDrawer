@@ -9,7 +9,8 @@ from .spectrum_panel import _ion_color
 
 def draw_mass_error_panel(ax, reg_matches: List[MatchResult],
                           tol_ppm: float = 20.0, config: dict = None,
-                          precursor_matches: list = None):
+                          precursor_matches: list = None,
+                          special_ion_matches: list = None):
     """Draw the mass error panel (bottom panel).
 
     Parameters
@@ -67,6 +68,13 @@ def draw_mass_error_panel(ax, reg_matches: List[MatchResult],
         for label, obs_mz, int_norm, ppm in precursor_matches:
             ax.scatter(obs_mz, ppm, c=c_precursor, s=s_size, zorder=5,
                        edgecolors='white', linewidth=s_lw)
+
+    # Draw special ion matches as scatter points
+    if special_ion_matches:
+        for label, theo_mz, obs_mz, int_norm, ppm, color in special_ion_matches:
+            ax.scatter(obs_mz, ppm, c=color, s=s_size, zorder=6,
+                       edgecolors='white', linewidth=s_lw,
+                       marker='D')  # diamond marker to distinguish
 
     ax.set_yticks([-20, -10, 0, 10, 20])
     ax.tick_params(labelsize=config.get('ytick_labelsize', 8),

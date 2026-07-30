@@ -9,7 +9,8 @@ from ..utils.fragment_matcher import MatchResult
 
 def draw_spectrum_panel(ax, spec, reg_matches: List[MatchResult],
                         max_int: float, config: dict = None,
-                        precursor_matches: list = None):
+                        precursor_matches: list = None,
+                        special_ion_matches: list = None):
     """Draw the MS/MS spectrum panel (middle panel).
 
     Parameters
@@ -99,6 +100,16 @@ def draw_spectrum_panel(ax, spec, reg_matches: List[MatchResult],
                     ha='center', va='bottom', fontsize=ion_fs,
                     fontweight='bold', color=c_precursor,
                     rotation=ion_rot, zorder=10)
+
+    # Draw special ion matches (immonium ions etc.)
+    if special_ion_matches:
+        for label, theo_mz, obs_mz, int_norm, ppm, color in special_ion_matches:
+            ax.vlines(obs_mz, 0, int_norm,
+                      colors=color, linewidths=match_lw, zorder=4)
+            ax.text(obs_mz, int_norm + 2, label,
+                    ha='center', va='bottom', fontsize=ion_fs,
+                    fontweight='bold', color=color,
+                    rotation=ion_rot, zorder=11)
 
 
 def _ion_color(name, c_b, c_y, c_beta_b, c_beta_y, c_clv_lc, c_clv_sc):

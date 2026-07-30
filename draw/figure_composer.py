@@ -45,7 +45,8 @@ class FigureComposer:
              linker_mass: float = None,
              is_cleavable: bool = False,
              long_arm_mass: float = 0.0,
-             short_arm_mass: float = 0.0):
+             short_arm_mass: float = 0.0,
+             special_ion_list: list = None):
         """Draw a single spectrum figure.
 
         Parameters
@@ -310,6 +311,10 @@ class FigureComposer:
             proforma_str = build_proforma(ident.alpha_seq, mods_dict)
             proforma_str += f'/{ident.charge}'
 
+        # ── Special ion matching ──────────────────────────────────
+        special_ion_matches = _match_special_ions(
+            spectrum, special_ion_list)
+
         # X-axis range (shared across panels)
         mz_min = spectrum.mz.min() - 20
         mz_max = spectrum.mz.max() + 20
@@ -396,10 +401,12 @@ class FigureComposer:
                               loop_sites, show_loop_arc, lad_cfg)
 
         draw_spectrum_panel(ax_spec, spec_obj, all_matches, max_int, spec_cfg,
-                            precursor_matches=precursor_matches)
+                            precursor_matches=precursor_matches,
+                            special_ion_matches=special_ion_matches)
 
         draw_mass_error_panel(ax_err, all_matches, tol_ppm, err_cfg,
-                              precursor_matches=precursor_matches)
+                              precursor_matches=precursor_matches,
+                              special_ion_matches=special_ion_matches)
 
         # Set x-limits for spectrum and error panels
         ax_spec.set_xlim(mz_min, mz_max)
@@ -752,3 +759,39 @@ def _iter_nl(nl_info: dict):
     for pos, nl_masses in nl_info.items():
         for nl_mass in nl_masses:
             yield pos, nl_mass
+
+
+def _match_special_ions(spectrum: Spectrum,
+                         special_ion_list: list = None) -> list:
+    """Match special ions (e.g. immonium ions) against observed peaks.
+
+    Parameters
+    ----------
+    spectrum : Spectrum
+        Observed MS/MS spectrum.
+    special_ion_list : list of dict or None
+        Each dict has keys: 'mz', 'label', 'color', 'ppm_tol'.
+        None if special ions are disabled.
+
+    Returns
+    -------
+    list of (label, mz, obs_mz, intensity_norm, ppm, color)
+        Intensity is normalized to 0-100 scale.
+    """
+    if not special_ion_list:
+        return []
+
+    results = []
+    for ion in special_ion_list:
+        theo_mz = ion['mz']
+        tol_ppm = ion.get('ppm_tol', 20.0)
+        tol_da = theo_mz * tol_ppm / 1e6
+        diff = np.abs(spectrum.mz - theo_mz)
+        idx = np.argmin(diff)
+        if diff[idx] < tol_da:
+            obs_mz = spectrum.mz[idx]
+            int_norm = spectrum.intensity[idx] / spectrum.max_intensity * 100
+            ppm = (obs_mz - theo_mz) / theo_mz * 1e6
+            results.append((ion['label'], ion['mz'], obs_mz, int_norm,
+                            ppm, ion['color']))
+    return results

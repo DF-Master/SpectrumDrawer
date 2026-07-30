@@ -99,6 +99,12 @@ Examples:
                         help='Override mass tolerance (ppm) from config')
     parser.add_argument('--max-charge', dest='max_charge', type=int, default=None,
                         help='Max charge state for b/y fragment ions (default: 2)')
+    parser.add_argument('--special-ions', dest='special_ions', type=str, default=None,
+                        help='Comma-separated list of special ion names to annotate '
+                             '(e.g. Gly,Ala,Leu). Use "all" for all ions in database.')
+    parser.add_argument('--special-ions-file', dest='special_ions_file', type=str,
+                        default=None,
+                        help='Path to custom special_ions.ini file')
 
     args = parser.parse_args()
 
@@ -146,6 +152,8 @@ Examples:
         out_dir=args.out_dir,
         linker_name=args.linker_name,
         spec_types=args.spec_types,
+        special_ions=args.special_ions,
+        special_ions_file=args.special_ions_file,
     )
 
 

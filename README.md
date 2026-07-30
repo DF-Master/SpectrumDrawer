@@ -4,7 +4,7 @@ MS/MS 谱图可视化工具，专为交联质谱 (Cross-Linking Mass Spectrometr
 
 从 pFind/pLink 或 pSimXL 的鉴定结果出发，自动生成带有序列图、谱图注释和质量误差面板的出版级 PNG 图片。
 
-![1785298903515](image/README/1785298903515.png)
+![1785389401708](image/README/1785389401708.png)
 
 ![1785298855724](image/README/1785298855724.png)
 
@@ -29,8 +29,8 @@ MS/MS 谱图可视化工具，专为交联质谱 (Cross-Linking Mass Spectrometr
   - 质量误差散点图（ppm 偏差）
 - **前体离子匹配**：完整前体离子、可裂解臂前体离子、中性丢失变体
 - **中性丢失离子**：自动计算并标注带中性丢失的碎片离子
+- **特殊离子标注**：支持亚胺离子 (immonium ions) 等特殊 m/z 离子的自动标注，颜色、容差可自定义
 - **高度可配置**：通过 YAML 配置文件自定义颜色、字体、布局等所有视觉参数
-- **智能标题栏**：交联谱图分别显示 α/β 链覆盖率，标题过长时自动缩放字体
 
 ---
 
@@ -107,7 +107,30 @@ pFind 解析器支持单肽段修饰鉴定结果（regular 类型），自动解
   --types         要绘制的谱图类型 (0=regular, 1=mono, 2=loop, 3=xlink)
   --tol           质量容差 ppm (覆盖配置文件)
   --max-charge    b/y 碎片离子最大电荷态 (默认: 2)
+  --special-ions  要标注的特殊离子名称列表（逗号分隔，如 Gly,Ala,Leu），使用 "all" 标注全部
+  --special-ions-file  自定义 special_ions.ini 文件路径
 ```
+
+### 特殊离子标注
+
+```bash
+# 标注所有数据库中的亚胺离子
+python main.py --mgf spectra.mgf --ident results.plabel --parser plink --special-ions all
+
+# 只标注指定离子
+python main.py --mgf spectra.mgf --ident results.plabel --parser plink --special-ions "Gly,Ala,Pro"
+
+# 使用自定义数据库
+python main.py --mgf spectra.mgf --ident results.plabel --parser plink --special-ions all --special-ions-file my_ions.ini
+```
+
+特殊离子数据库位于 `database/special_ions.ini`，每行格式为：
+
+```
+name=m/z,显示标签,颜色,ppm容差
+```
+
+例如：`Leu=86.097,Leu/Ile+,#8B4513,20.0`
 
 ---
 
@@ -170,6 +193,7 @@ SpectrumDrawer/
 │   ├── element.ini          # 元素单同位素质量
 │   ├── modification.ini     # 修饰质量数据
 │   ├── xlink.ini            # 交联剂定义
+│   ├── special_ions.ini     # 特殊离子（亚胺离子）数据库
 │   ├── residues.py          # 残基质量（懒加载）
 │   ├── modifications.py     # 修饰质量（懒加载）
 │   ├── ini_loader.py        # INI 文件解析器
@@ -222,9 +246,15 @@ SpectrumDrawer/
 
 ## 版本
 
-当前版本：**v0.1.2** (Beta)
+当前版本：**v0.2.0** (Beta)
 
 ### 更新日志
+
+**v0.2.0**
+
+- 新增特殊离子标注功能：支持亚胺离子 (immonium ions) 等特殊 m/z 离子的自动标注，质量误差面板使用菱形标记区分
+- 新增 `database/special_ions.ini` 数据库文件，预置 20 种常见氨基酸亚胺离子
+- 新增 `--special-ions` 和 `--special-ions-file` CLI 参数
 
 **v0.1.2**
 

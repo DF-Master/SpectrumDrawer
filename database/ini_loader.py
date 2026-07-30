@@ -335,3 +335,67 @@ def get_crosslinker_cleavable_info(linker_name):
         info = data[linker_name]
         return (info['cleavable'], info['long_arm_mass'], info['short_arm_mass'])
     return None
+
+
+def parse_special_ions_ini(path=None):
+    """Parse special_ions.ini → dict of {short_name: ion_info}.
+
+    Format: short_name = m/z, display_label, color, ppm_tol
+
+    Returns: {
+        'Gly': {
+            'mz': 58.029,
+            'label': 'Gly+',
+            'color': '#8B4513',
+            'ppm_tol': 20.0,
+        }, ...
+    }
+    """
+    if path is None:
+        path = os.path.join(_DB_DIR, 'special_ions.ini')
+
+    result = {}
+    with open(path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or line.startswith('@'):
+                continue
+            m = re.match(r'^([^=]+)=(.*)$', line)
+            if not m:
+                continue
+            name = m.group(1).strip()
+            data_str = m.group(2).strip()
+            parts = [p.strip() for p in data_str.split(',')]
+            if len(parts) < 3:
+                continue
+            try:
+                mz = float(parts[0])
+            except ValueError:
+                continue
+            label = parts[1]
+            color = parts[2]
+            ppm_tol = 20.0
+            if len(parts) >= 4:
+                try:
+                    ppm_tol = float(parts[3])
+                except ValueError:
+                    pass
+            result[name] = {
+                'mz': mz,
+                'label': label,
+                'color': color,
+                'ppm_tol': ppm_tol,
+            }
+    return result
+
+
+# Lazy-loaded cache for special ions
+_special_ions_data = None
+
+
+def get_special_ions_data(path=None):
+    """Get parsed special ions data (cached)."""
+    global _special_ions_data
+    if _special_ions_data is None:
+        _special_ions_data = parse_special_ions_ini(path)
+    return _special_ions_data

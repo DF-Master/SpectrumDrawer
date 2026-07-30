@@ -15,7 +15,7 @@ from ..database.modifications import (
     DEFAULT_LINKER, FALLBACK_MONO_MASS, FALLBACK_LOOP_MASS,
     configure_mod_names,
 )
-from ..database.ini_loader import get_crosslinker_cleavable_info
+from ..database.ini_loader import get_crosslinker_cleavable_info, get_special_ions_data
 
 
 class SpectrumDrawer:
@@ -41,7 +41,9 @@ class SpectrumDrawer:
     def run(self, spectrum_path: str, ident_path: str,
             parser: str, out_dir: str,
             linker_name: str = None,
-            spec_types: Optional[List[int]] = None):
+            spec_types: Optional[List[int]] = None,
+            special_ions: str = None,
+            special_ions_file: str = None):
         """Run the full pipeline: load identifications → single-pass MGF scan → draw.
 
         Uses a single-pass approach for maximum speed with large MGF files:
@@ -72,6 +74,33 @@ class SpectrumDrawer:
         if is_cleavable:
             print(f'  Crosslinker is cleavable: long_arm={long_arm_mass:.3f}, '
                   f'short_arm={short_arm_mass:.3f}')
+
+        # ── special ions ──────────────────────────────────────────
+        special_ion_list = None  # None = disabled, [] = empty list
+        if special_ions is not None:
+            if special_ions.strip().lower() == 'all':
+                special_ion_list = 'all'
+            else:
+                special_ion_list = [s.strip() for s in special_ions.split(',')
+                                    if s.strip()]
+            if special_ion_list:
+                all_data = get_special_ions_data(special_ions_file)
+                if special_ion_list == 'all':
+                    selected = list(all_data.values())
+                else:
+                    selected = []
+                    for name in special_ion_list:
+                        if name in all_data:
+                            selected.append(all_data[name])
+                        else:
+                            print(f'  Warning: special ion "{name}" not found '
+                                  f'in database, skipping.')
+                if selected:
+                    print(f'  Special ions enabled: '
+                          f'{", ".join(s["label"] for s in selected)}')
+                    special_ion_list = selected
+                else:
+                    special_ion_list = None
 
         # ── load identifications & build target structures ────────
         print(f'Reading identification file: {ident_path}')
@@ -150,6 +179,7 @@ class SpectrumDrawer:
                             matched_entry, title, charge, pepmass, rt, peaks,
                             out_dir, linker_name, is_cleavable,
                             mono_mass, loop_mass, long_arm_mass, short_arm_mass,
+                            special_ion_list,
                         )
                         draw_count += 1
                         if match_method == 'title':
@@ -213,6 +243,7 @@ class SpectrumDrawer:
                 spectrum_path, mz_fallbacks, out_dir,
                 linker_name, is_cleavable,
                 mono_mass, loop_mass, long_arm_mass, short_arm_mass,
+                special_ion_list,
             )
             # We don't track per-spectrum draw counts from fallback
             # — entries not found remain in mz_fallbacks
@@ -232,7 +263,8 @@ class SpectrumDrawer:
                           mz_fallbacks: list, out_dir: str,
                           linker_name: str, is_cleavable: bool,
                           mono_mass: float, loop_mass: float,
-                          long_arm_mass: float, short_arm_mass: float):
+                          long_arm_mass: float, short_arm_mass: float,
+                          special_ion_list: list = None):
         """Second pass: precursor m/z matching for entries not found by title.
 
         Collects metadata for all spectra, then picks best m/z match
@@ -273,6 +305,7 @@ class SpectrumDrawer:
                 list(zip(spec.mz, spec.intensity)),
                 out_dir, linker_name, is_cleavable,
                 mono_mass, loop_mass, long_arm_mass, short_arm_mass,
+                special_ion_list,
             )
 
     def _draw_one(self, entry: Identification, title: str,
@@ -280,7 +313,8 @@ class SpectrumDrawer:
                   peaks: list, out_dir: str,
                   linker_name: str, is_cleavable: bool,
                   mono_mass: float, loop_mass: float,
-                  long_arm_mass: float, short_arm_mass: float):
+                  long_arm_mass: float, short_arm_mass: float,
+                  special_ion_list: list = None):
         """Build Spectrum from extracted data and render."""
         pks = np.array(peaks)
         spec = Spectrum(
@@ -305,6 +339,7 @@ class SpectrumDrawer:
                 is_cleavable=is_cleavable,
                 long_arm_mass=long_arm_mass,
                 short_arm_mass=short_arm_mass,
+                special_ion_list=special_ion_list,
             )
             if entry.is_xlink and len(result) == 11:
                 b_c, y_c, b_p, y_p, n_match, \

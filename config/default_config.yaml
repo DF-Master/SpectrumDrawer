@@ -109,6 +109,7 @@ colors:
   beta_y_ion: '#CC3300'
   cleavable_ion_lc: '#6A0DAD'
   cleavable_ion_sc: '#C77DFF'
+  special_ion: '#8B4513'
   intact_precursor: '#444444'
   chain_label: '#555555'
   unmatched_peak: '#808080'

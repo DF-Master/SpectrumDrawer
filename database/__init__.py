@@ -5,6 +5,7 @@ from .ini_loader import (
     get_crosslinker_mono_mass,
     get_crosslinker_xlink_mass,
     get_crosslinker_cleavable_info,
+    get_special_ions_data,
     DEFAULT_LINKER,
     FALLBACK_MONO_MASS,
     FALLBACK_LOOP_MASS,

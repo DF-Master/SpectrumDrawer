@@ -58,6 +58,7 @@ def draw_ladder_panel(ax, seq: str, fstat: Dict[str, str], charge: int,
     clv_b_off = config.get('clv_b_offset', 0.4)
     clv_y_off = config.get('clv_y_offset', 0.4)
     clv_gap = config.get('clv_gap', 0.35)
+    ring_off = config.get('ring_y_offset', 0.5)
 
     colors = config.get('colors', {})
     c_b = colors.get('b_ion', '#006400')
@@ -93,7 +94,7 @@ def draw_ladder_panel(ax, seq: str, fstat: Dict[str, str], charge: int,
                 fontsize=residue_fs, fontweight='bold', color=c, zorder=10)
         # Ring marker for crosslinker-modified residue
         if (i + 1) == xlink_pos:
-            ax.plot(x, seq_y + 0.08, 'o', markerfacecolor='none',
+            ax.plot(x, seq_y + ring_off, 'o', markerfacecolor='none',
                     markeredgecolor=c_mod,
                     markeredgewidth=config.get('xlink_ring_width', 2.2),
                     markersize=config.get('xlink_ring_size', 20),
@@ -106,12 +107,12 @@ def draw_ladder_panel(ax, seq: str, fstat: Dict[str, str], charge: int,
             x1 = first_x + (site1 - 1) * spacing
             x2 = first_x + (site2 - 1) * spacing
             # Ring markers (always shown for loop-link)
-            ax.plot(x1, seq_y + 0.08, 'o', markerfacecolor='none',
+            ax.plot(x1, seq_y + ring_off, 'o', markerfacecolor='none',
                     markeredgecolor=c_mod,
                     markeredgewidth=config.get('xlink_ring_width', 2.2),
                     markersize=config.get('xlink_ring_size', 20),
                     zorder=9)
-            ax.plot(x2, seq_y + 0.08, 'o', markerfacecolor='none',
+            ax.plot(x2, seq_y + ring_off, 'o', markerfacecolor='none',
                     markeredgecolor=c_mod,
                     markeredgewidth=config.get('xlink_ring_width', 2.2),
                     markersize=config.get('xlink_ring_size', 20),
@@ -271,6 +272,7 @@ def draw_xlink_ladder_panel(ax, alpha_seq: str, beta_seq: str,
     clv_b_off = config.get('xlink_clv_b_offset', config.get('clv_b_offset', 0.4))
     clv_y_off = config.get('xlink_clv_y_offset', config.get('clv_y_offset', 0.4))
     ylim_margin = config.get('xlink_ylim_margin', 1.0)
+    ring_off = config.get('ring_y_offset', 0.5)
 
     ax.set_xlim(spec_xmin, spec_xmax)
     y_min = seq_y_b - b_drop - clv_gap - clv_b_off - ylim_margin
@@ -346,7 +348,7 @@ def draw_xlink_ladder_panel(ax, alpha_seq: str, beta_seq: str,
                 fontsize=residue_fs, fontweight='bold', color=c, zorder=10)
         # Ring marker for crosslink site
         if pos == xlink_sites[0]:
-            ax.plot(x, seq_y_a + 0.08, 'o', markerfacecolor='none',
+            ax.plot(x, seq_y_a + ring_off, 'o', markerfacecolor='none',
                     markeredgecolor=c_mod,
                     markeredgewidth=config.get('xlink_ring_width', 2.2),
                     markersize=config.get('xlink_ring_size', 20),
@@ -366,7 +368,7 @@ def draw_xlink_ladder_panel(ax, alpha_seq: str, beta_seq: str,
                 fontsize=residue_fs, fontweight='bold', color=c, zorder=10)
         # Ring marker for crosslink site
         if pos == xlink_sites[1]:
-            ax.plot(x, seq_y_b + 0.08, 'o', markerfacecolor='none',
+            ax.plot(x, seq_y_b + ring_off, 'o', markerfacecolor='none',
                     markeredgecolor=c_mod,
                     markeredgewidth=config.get('xlink_ring_width', 2.2),
                     markersize=config.get('xlink_ring_size', 20),

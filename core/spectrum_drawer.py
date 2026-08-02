@@ -351,7 +351,7 @@ class SpectrumDrawer:
             else:
                 b_c, y_c, b_p, y_p, n_match = result
                 print(f'  -> {os.path.basename(out_path)}  '
-                      f'b:{b_c}/{b_p} y:{y_c}/{b_p} matches:{n_match}')
+                      f'b:{b_c}/{b_p} y:{y_c}/{y_p} matches:{n_match}')
         except Exception as e:
             print(f'  Error drawing {entry.title}: {e}')
             import traceback

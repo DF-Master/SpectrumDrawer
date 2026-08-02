@@ -33,6 +33,7 @@ ladder:
   clv_b_offset: 0.4 # extra offset below regular b brackets for cleavable b[lc/sc]
   clv_y_offset: 0.4 # extra offset above regular y brackets for cleavable y[lc/sc]
   clv_gap: 1.0 # gap past middle labels where outer bracket vertical starts
+  ring_y_offset: 0.2 # y offset above sequence baseline for crosslink site ring marker
   residue_fontsize: 16
   ion_label_fontsize: 8
   charge_label_fontsize: 11

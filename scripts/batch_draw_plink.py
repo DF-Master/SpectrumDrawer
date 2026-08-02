@@ -66,7 +66,7 @@ from SpectrumDrawer.database.modifications import (
     get_crosslinker_mono_mass, get_crosslinker_xlink_mass,
     DEFAULT_LINKER, FALLBACK_MONO_MASS, FALLBACK_LOOP_MASS,
 )
-from SpectrumDrawer.database.ini_loader import get_crosslinker_cleavable_info
+from SpectrumDrawer.database.ini_loader import get_crosslinker_cleavable_info, get_special_ions_data
 
 # ── 类型定义 ────────────────────────────────────────────────────────
 _FILE_TYPE_MAP: Dict[str, SpecType] = {
@@ -202,9 +202,11 @@ class _IdentContext:
 class PlinkBatchProcessor:
     """单 MGF + 多份 plabel 的单次扫描批处理器。"""
 
-    def __init__(self, drawer: SpectrumDrawer):
+    def __init__(self, drawer: SpectrumDrawer,
+                 special_ion_list: list = None):
         self.drawer = drawer
         self.parser = BaseIdentificationParser.get_parser('plink')
+        self.special_ion_list = special_ion_list
 
     # ── 主入口 ─────────────────────────────────────────────────────
 
@@ -438,6 +440,7 @@ class PlinkBatchProcessor:
                 is_cleavable=ctx.is_cleavable,
                 long_arm_mass=ctx.long_arm_mass,
                 short_arm_mass=ctx.short_arm_mass,
+                special_ion_list=self.special_ion_list,
             )
             ctx.draw_count += 1
         except Exception:
@@ -448,24 +451,51 @@ class PlinkBatchProcessor:
 # 多进程入口函数（模块级，picklable）
 # ═══════════════════════════════════════════════════════════════════
 
+def _resolve_special_ions(special_ions_arg: str,
+                          special_ions_file: str) -> list:
+    """解析 --special-ions / --special-ions-file 参数为 resolved list。"""
+    if special_ions_arg is None:
+        return None
+    if special_ions_arg.strip().lower() == 'all':
+        names = 'all'
+    else:
+        names = [s.strip() for s in special_ions_arg.split(',') if s.strip()]
+    if not names:
+        return None
+    all_data = get_special_ions_data(special_ions_file)
+    if names == 'all':
+        selected = list(all_data.values())
+    else:
+        selected = []
+        for name in names:
+            if name in all_data:
+                selected.append(all_data[name])
+            else:
+                print(f'  Warning: special ion "{name}" not found '
+                      f'in database, skipping.')
+    if selected:
+        print(f'  Special ions enabled: '
+              f'{", ".join(s["label"] for s in selected)}')
+        return selected
+    return None
+
+
 def _process_one_mgf_group(args: Tuple) -> Tuple[str, int, float]:
     """多进程 worker：处理一组 MGF。
 
     Args:
         args: (mgf_path, plabel_infos, pLink_dir, config_path,
-               dpi, skip_fallback)
-
-    Returns:
-        (mgf_basename, total_drawn, elapsed_seconds)
+               dpi, skip_fallback, special_ion_list)
     """
     (mgf_path, plabel_infos, pLink_dir, config_path,
-     dpi, skip_fallback) = args
+     dpi, skip_fallback, special_ion_list) = args
 
     # 每进程独立创建 drawer 和 processor
     drawer = SpectrumDrawer(config_path=config_path)
     if dpi is not None:
         drawer.config.apply_cli_overrides(**{'figure.dpi': dpi})
-    processor = PlinkBatchProcessor(drawer)
+    processor = PlinkBatchProcessor(drawer,
+                                    special_ion_list=special_ion_list)
 
     total_drawn, elapsed = processor.process_mgf_group(
         mgf_path, plabel_infos, pLink_dir,
@@ -541,6 +571,15 @@ def main():
                             action='store_true', default=False,
                             help='跳过 precursor m/z 后备匹配（提速，但可能漏掉少量谱图）')
 
+    # 特殊离子参数
+    ion_group = parser.add_argument_group('特殊离子标注')
+    ion_group.add_argument('--special-ions', dest='special_ions',
+                           type=str, default=None,
+                           help='标注的特殊离子名称列表（逗号分隔，或用 "all" 表示全部）')
+    ion_group.add_argument('--special-ions-file', dest='special_ions_file',
+                           type=str, default=None,
+                           help='自定义 special_ions.ini 文件路径')
+
     args = parser.parse_args()
 
     pLink_dir = os.path.abspath(args.pLink_dir)
@@ -590,7 +629,13 @@ def main():
 
     print(f'发现 {len(plabel_files)} 个 plabel ({count_str})')
     print(f'对应 {n_mgf} 个 MGF 文件，{n_workers} 个并行进程')
-    print(f'DPI: {args.dpi}  |  m/z fallback: {"ON" if not args.no_fallback else "OFF"}')
+
+    # 解析特殊离子列表（如果指定了 --special-ions / --special-ions-file）
+    special_ion_list = _resolve_special_ions(args.special_ions,
+                                             args.special_ions_file)
+
+    print(f'DPI: {args.dpi}  |  m/z fallback: {"ON" if not args.no_fallback else "OFF"}'
+          f'  |  special ions: {"ON" if special_ion_list else "OFF"}')
     print(f'{"=" * 60}')
 
     # ── 处理 ──────────────────────────────────────────────────────
@@ -601,7 +646,8 @@ def main():
         drawer = SpectrumDrawer(config_path=args.config_path)
         if args.dpi is not None:
             drawer.config.apply_cli_overrides(**{'figure.dpi': args.dpi})
-        processor = PlinkBatchProcessor(drawer)
+        processor = PlinkBatchProcessor(drawer,
+                                        special_ion_list=special_ion_list)
         total_drawn = 0
         times = []
         for i, (mgf_path, plabel_infos) in enumerate(
@@ -622,7 +668,7 @@ def main():
         # 多进程并行（Pool.map）
         task_args = [
             (mgf_path, plabel_infos, pLink_dir, args.config_path,
-             args.dpi, args.no_fallback)
+             args.dpi, args.no_fallback, special_ion_list)
             for mgf_path, plabel_infos in mgf_groups.items()
         ]
 

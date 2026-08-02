@@ -40,3 +40,6 @@ test/output/
 # OS
 Thumbs.db
 Desktop.ini
+
+# User-customized database files
+database/special_ions-*.ini

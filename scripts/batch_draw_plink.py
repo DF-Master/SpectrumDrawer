@@ -171,7 +171,7 @@ class _IdentContext:
 
     def __init__(self, plabel_path: str, out_dir: str,
                  linker_name: str, file_type: str,
-                 tol_ppm: float):
+                 tol_ppm: float, max_output: int = None):
         self.plabel_path = plabel_path
         self.out_dir = out_dir
         self.linker_name = linker_name
@@ -187,12 +187,14 @@ class _IdentContext:
         self.long_arm_mass = ci[1] if ci else 0.0
         self.short_arm_mass = ci[2] if ci else 0.0
         self.tol_ppm = tol_ppm
+        self.max_output = max_output
 
         # 鉴定数据（在 _load_ident_context 中填充）
         self.entries: List[Identification] = []
         self.title_index: Dict[str, list] = {}
         self.mz_fallbacks: List[Tuple] = []
         self.draw_count = 0
+        self.cap_warned = False
 
     @property
     def basename(self) -> str:
@@ -220,6 +222,9 @@ class PlinkBatchProcessor:
         """
         t_start = time.perf_counter()
         tol_ppm = self.drawer.config.tol_ppm
+        max_output = self.drawer.config.max_output_per_file
+        if max_output is not None and max_output <= 0:
+            max_output = None  # <=0 表示不限制
 
         # 为每份 plabel 创建上下文
         contexts: List[_IdentContext] = []
@@ -236,7 +241,7 @@ class PlinkBatchProcessor:
             )
 
             ctx = _IdentContext(plabel_path, out_dir, linker_name,
-                               file_type, tol_ppm)
+                               file_type, tol_ppm, max_output=max_output)
             self._load_ident_context(ctx)
             if ctx.entries:
                 contexts.append(ctx)
@@ -275,6 +280,16 @@ class PlinkBatchProcessor:
         entries = list(dedup.values())
         if not entries:
             return
+
+        # 单文件输出上限：plabel 按得分排序，仅保留前 max_output 条
+        # （= 得分最高的前 max_output 张谱图）。必须在按 MGF 分组前截断，
+        # 否则截断点由 MGF 扫描顺序决定，不再是按得分的顺序。
+        if ctx.max_output is not None and len(entries) > ctx.max_output:
+            print(f'  [WARN] {ctx.basename}: {len(entries)} 个鉴定条目超过'
+                  f'单文件上限 {ctx.max_output}，仅绘制得分最高的前 '
+                  f'{ctx.max_output} 条。如需输出全部，请调大配置 '
+                  f'output.max_per_file。')
+            entries = entries[:ctx.max_output]
 
         ctx.entries = entries
         for e in entries:
@@ -411,6 +426,15 @@ class PlinkBatchProcessor:
 
     def _draw_one(self, ctx: _IdentContext, title: str,
                   charge: int, pepmass: float, rt, peaks: list):
+        # 单文件输出上限：达到后不再绘制并给出 WARNING
+        if ctx.max_output is not None and ctx.draw_count >= ctx.max_output:
+            if not ctx.cap_warned:
+                print(f'  WARNING: {ctx.basename} 已达到单文件最大输出数 '
+                      f'{ctx.max_output}，剩余谱图将不会输出。'
+                      f'如需输出全部谱图，请调大配置 output.max_per_file。')
+                ctx.cap_warned = True
+            return
+
         entry = getattr(ctx, '_matched', ctx.entries[0])
 
         pks = np.array(peaks)

@@ -56,6 +56,9 @@ class SpectrumDrawer:
 
         # ── config ────────────────────────────────────────────────
         tol_ppm = self.config.tol_ppm
+        max_output = self.config.max_output_per_file
+        if max_output is not None and max_output <= 0:
+            max_output = None  # <=0 表示不限制
         if linker_name is None:
             linker_name = self.config.get(
                 'crosslinker', 'default_name', default=DEFAULT_LINKER
@@ -121,6 +124,16 @@ class SpectrumDrawer:
         n_skipped += (len(entries) - len(dedup_map))
         entries = list(dedup_map.values())
 
+        # 单文件输出上限：鉴定文件按得分排序，仅保留前 max_output 条
+        # （= 得分最高的前 max_output 张谱图）。必须在构建匹配索引前截断，
+        # 否则按 MGF 扫描顺序计数，截断点不再由得分顺序决定。
+        if max_output is not None and len(entries) > max_output:
+            n_skipped += (len(entries) - max_output)
+            print(f'  WARNING: {len(entries)} 个鉴定条目超过单文件上限 '
+                  f'{max_output}，仅绘制得分最高的前 {max_output} 条。'
+                  f'如需输出全部，请调大配置 output.max_per_file。')
+            entries = entries[:max_output]
+
         print(f'  Loaded {len(entries)} identifications')
 
         if not entries:
@@ -148,6 +161,7 @@ class SpectrumDrawer:
         n_title_match = 0
         n_mz_match = 0
         total_scanned = 0
+        cap_warned = False
 
         in_block = False
         title = None
@@ -175,17 +189,25 @@ class SpectrumDrawer:
 
                 if ls == 'END IONS':
                     if matched_entry is not None and peaks:
-                        self._draw_one(
-                            matched_entry, title, charge, pepmass, rt, peaks,
-                            out_dir, linker_name, is_cleavable,
-                            mono_mass, loop_mass, long_arm_mass, short_arm_mass,
-                            special_ion_list,
-                        )
-                        draw_count += 1
-                        if match_method == 'title':
-                            n_title_match += 1
+                        if max_output is not None and draw_count >= max_output:
+                            if not cap_warned:
+                                print(f'  WARNING: 已达到单文件最大输出数 '
+                                      f'{max_output}，剩余谱图将不会输出。'
+                                      f'如需输出全部谱图，请调大配置 '
+                                      f'output.max_per_file。')
+                                cap_warned = True
                         else:
-                            n_mz_match += 1
+                            self._draw_one(
+                                matched_entry, title, charge, pepmass, rt,
+                                peaks, out_dir, linker_name, is_cleavable,
+                                mono_mass, loop_mass, long_arm_mass,
+                                short_arm_mass, special_ion_list,
+                            )
+                            draw_count += 1
+                            if match_method == 'title':
+                                n_title_match += 1
+                            else:
+                                n_mz_match += 1
                     in_block = False
                     continue
 
@@ -239,11 +261,14 @@ class SpectrumDrawer:
         if unmatched_by_title > 0 and mz_fallbacks:
             print(f'  {unmatched_by_title} entries unmatched by title, '
                   f'trying m/z fallback pass...')
-            self._mz_fallback_pass(
+            draw_count, cap_warned = self._mz_fallback_pass(
                 spectrum_path, mz_fallbacks, out_dir,
                 linker_name, is_cleavable,
                 mono_mass, loop_mass, long_arm_mass, short_arm_mass,
                 special_ion_list,
+                max_output=max_output,
+                draw_count=draw_count,
+                cap_warned=cap_warned,
             )
             # We don't track per-spectrum draw counts from fallback
             # — entries not found remain in mz_fallbacks
@@ -264,16 +289,21 @@ class SpectrumDrawer:
                           linker_name: str, is_cleavable: bool,
                           mono_mass: float, loop_mass: float,
                           long_arm_mass: float, short_arm_mass: float,
-                          special_ion_list: list = None):
+                          special_ion_list: list = None,
+                          max_output: int = None,
+                          draw_count: int = 0,
+                          cap_warned: bool = False):
         """Second pass: precursor m/z matching for entries not found by title.
 
         Collects metadata for all spectra, then picks best m/z match
         for each unmatched entry (minimises |pepmass_obs - pepmass_theo|).
+
+        Returns (draw_count, cap_warned) to keep output-cap state consistent.
         """
         reader = BaseSpectrumReader.get_reader(spectrum_path)
         meta = reader.read_metadata(spectrum_path)
         if not meta:
-            return
+            return draw_count, cap_warned
 
         meta_titles = list(meta.keys())
         meta_pmz = np.array([meta[t]['precursor_mz'] for t in meta_titles])
@@ -281,6 +311,14 @@ class SpectrumDrawer:
 
         matched_titles: Set[str] = set()
         for entry, theo, tol_da in mz_fallbacks:
+            if max_output is not None and draw_count >= max_output:
+                if not cap_warned:
+                    print(f'  WARNING: 已达到单文件最大输出数 '
+                          f'{max_output}，剩余谱图将不会输出。'
+                          f'如需输出全部谱图，请调大配置 '
+                          f'output.max_per_file。')
+                    cap_warned = True
+                continue
             mask = ((meta_pmz >= theo - tol_da) &
                     (meta_pmz <= theo + tol_da) &
                     (meta_chg == entry.charge))
@@ -307,6 +345,9 @@ class SpectrumDrawer:
                 mono_mass, loop_mass, long_arm_mass, short_arm_mass,
                 special_ion_list,
             )
+            draw_count += 1
+
+        return draw_count, cap_warned
 
     def _draw_one(self, entry: Identification, title: str,
                   charge: int, pepmass: float, rt: Optional[float],

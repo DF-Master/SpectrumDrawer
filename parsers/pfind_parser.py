@@ -11,9 +11,15 @@ pFind searches single peptide modifications (regular type only).
 Modification column format:
   "position,mod_name;..." (1-based, position 0 = N-term)
   Example: "11,Carbamidomethyl[C];19,SDA_mono;"
+
+pFind output directories contain both `pFind-Filtered.spectra` (FDR-filtered)
+and `pFind.spectra` (full results).  `find_spectra_file()` resolves the
+filtered file first and falls back to the full file; `parse()` accepts
+either a file path or a directory (auto-resolved).
 """
 
-from typing import List, Tuple
+import os
+from typing import List, Optional, Tuple
 from .base import BaseIdentificationParser
 from ..models import Identification, SpecType
 
@@ -21,7 +27,39 @@ from ..models import Identification, SpecType
 class PfindParser(BaseIdentificationParser):
     """Parse pFind .spectra identification files."""
 
+    _SPECTRA_FILENAMES = ('pFind-Filtered.spectra', 'pFind.spectra')
+
+    @staticmethod
+    def find_spectra_file(result_dir: str) -> Optional[str]:
+        """Resolve the .spectra file in a pFind result directory.
+
+        Prioritizes the FDR-filtered `pFind-Filtered.spectra`; if it does
+        not exist, falls back to the full `pFind.spectra`.
+
+        Returns
+        -------
+        str or None
+            Path to the resolved .spectra file, or None if neither exists.
+        """
+        for name in PfindParser._SPECTRA_FILENAMES:
+            p = os.path.join(result_dir, name)
+            if os.path.isfile(p):
+                return p
+        return None
+
     def parse(self, path: str) -> List[Identification]:
+        """Parse a pFind .spectra identification file.
+
+        If ``path`` is a directory, the file is resolved automatically
+        (preferring pFind-Filtered.spectra, falling back to pFind.spectra).
+        """
+        if os.path.isdir(path):
+            resolved = self.find_spectra_file(path)
+            if resolved is None:
+                raise FileNotFoundError(
+                    f'No pFind .spectra file found in directory: {path}')
+            path = resolved
+
         entries = []
         with open(path, 'r', encoding='utf-8') as f:
             header = f.readline()  # skip header

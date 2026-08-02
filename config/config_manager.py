@@ -109,3 +109,14 @@ class ConfigManager:
     def var_mod_names(self) -> list:
         """Variable modification names from config (reserved interface)."""
         return self.get('modifications', 'variable', default=[])
+
+    @property
+    def max_output_per_file(self) -> Optional[int]:
+        """Maximum number of spectra to output per identification file.
+
+        ``<= 0`` (or absent) 表示不限制，返回 ``None``。
+        """
+        v = self.get('output', 'max_per_file', default=5000)
+        if v is not None and v <= 0:
+            return None  # <=0 表示不限制
+        return v

@@ -126,6 +126,13 @@ processing:
   max_charge: 2
   min_relative_intensity: 0.1 # filter peaks below this % intensity
 
+# ── Output Limit ──
+# 单个鉴定文件（.plabel / .csv / .spectra）允许输出的最大谱图数。
+# 防止大文件产生冗余输出；超过后剩余谱图不输出并给出 WARNING，
+# 提示用户可通过调大 output.max_per_file 来输出全部谱图。<= 0 表示不限制。
+output:
+  max_per_file: 5000
+
 # ── spectrum_utils ──
 # If spectrum_utils is not installed as a package, set its path here
 spectrum_utils_path: ''

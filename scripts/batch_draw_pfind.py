@@ -199,9 +199,11 @@ class PfindBatchProcessor:
     """
 
     def __init__(self, drawer: SpectrumDrawer,
-                 special_ion_list: Optional[list] = None):
+                 special_ion_list: Optional[list] = None,
+                 out_dir_name: Optional[str] = None):
         self.drawer = drawer
         self.special_ion_list = special_ion_list
+        self._out_dir_name = out_dir_name or _OUT_DIR
         self.max_output = drawer.config.max_output_per_file
         if self.max_output is not None and self.max_output <= 0:
             self.max_output = None  # <=0 表示不限制
@@ -225,11 +227,13 @@ class PfindBatchProcessor:
             for _, exp_name in items:
                 self._exp_out.setdefault(
                     exp_name,
-                    os.path.join(pfind_dir, exp_name, _OUT_DIR, mgf_basename))
+                    os.path.join(pfind_dir, exp_name, self._out_dir_name,
+                                 mgf_basename))
         for _, _, _, exp_name in mz_fallbacks:
             self._exp_out.setdefault(
                 exp_name,
-                os.path.join(pfind_dir, exp_name, _OUT_DIR, mgf_basename))
+                os.path.join(pfind_dir, exp_name, self._out_dir_name,
+                             mgf_basename))
 
         self._single_pass_scan(mgf_path, title_index, matched_titles)
         if not skip_fallback:
@@ -407,16 +411,19 @@ def _process_one_mgf(args: Tuple) -> Tuple[str, int, float]:
 
     Args:
         args: (mgf_path, title_index, mz_fallbacks, pfind_dir,
-               config_path, dpi, skip_fallback, special_ion_list)
+               config_path, dpi, skip_fallback, special_ion_list,
+               out_dir_name)
     """
     (mgf_path, title_index, mz_fallbacks, pfind_dir,
-     config_path, dpi, skip_fallback, special_ion_list) = args
+     config_path, dpi, skip_fallback, special_ion_list,
+     out_dir_name) = args
 
     drawer = SpectrumDrawer(config_path=config_path)
     if dpi is not None:
         drawer.config.apply_cli_overrides(**{'figure.dpi': dpi})
     processor = PfindBatchProcessor(drawer,
-                                    special_ion_list=special_ion_list)
+                                    special_ion_list=special_ion_list,
+                                    out_dir_name=out_dir_name)
     total, elapsed = processor.process_mgf(
         mgf_path, title_index, mz_fallbacks, pfind_dir,
         skip_fallback=skip_fallback,
@@ -445,6 +452,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                         help='使用未过滤的 pFind.spectra 而非 pFind-Filtered.spectra')
     parser.add_argument('--raw-dir', dest='raw_dir', type=str, default=None,
                         help='原始谱图目录（含 .mgf）。默认取 pFind_dir 上级目录的 raw/')
+    parser.add_argument('--out-dir-name', dest='out_dir_name',
+                        type=str, default='spectra_png',
+                        help='输出 PNG 的子目录名（默认 spectra_png；'
+                             '如传 spectra_mod_png 则输出到 '
+                             '<实验名>/spectra_mod_png/<mgf名>/）')
 
     # 性能参数
     perf_group = parser.add_argument_group('性能调优')
@@ -561,7 +573,8 @@ def main():
                 mz_fallbacks.append((e, theo, theo * tol_ppm / 1e6, exp_name))
         task_args.append((mgf, dict(title_index), mz_fallbacks, pfind_dir,
                           args.config_path, args.dpi,
-                          args.no_fallback, None))  # special_ion_list 稍后填充
+                          args.no_fallback, None,  # special_ion_list 稍后填充
+                          args.out_dir_name))
 
     n_mgf = len(task_args)
     n_pairs = sum(len(items)
@@ -571,7 +584,8 @@ def main():
     # ── 特殊离子 ──────────────────────────────────────────────────
     special_ion_list = _resolve_special_ions(args.special_ions,
                                              args.special_ions_file)
-    task_args = [t[:-1] + (special_ion_list,) for t in task_args]
+    # 替换 special_ion_list 占位符，保留末尾的 out_dir_name
+    task_args = [t[:-2] + (special_ion_list, t[-1]) for t in task_args]
 
     n_workers = args.workers if args.workers >= 1 else 1
     print(f'DPI: {args.dpi}  |  m/z fallback: '
@@ -602,7 +616,7 @@ def main():
     print(f'  Total drawn: {total_drawn}  spectra')
     print(f'  Wall-clock:  {total_elapsed:7.1f}s '
           f'({total_elapsed / 60:.1f} min)')
-    print(f'  输出目录:  <pFind_dir>/<实验名>/{_OUT_DIR}/<mgf名>/')
+    print(f'  输出目录:  <pFind_dir>/<实验名>/{args.out_dir_name}/<mgf名>/')
     return 0
 
 

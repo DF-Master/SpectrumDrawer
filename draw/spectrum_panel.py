@@ -111,6 +111,37 @@ def draw_spectrum_panel(ax, spec, reg_matches: List[MatchResult],
                     fontweight='bold', color=color,
                     rotation=ion_rot, zorder=11)
 
+    # Draw the absolute value of the max intensity (= 100% relative intensity)
+    if config.get('show_max_intensity', True):
+        label_fs = config.get('max_intensity_fontsize',
+                              config.get('tick_label_fontsize', 9))
+        label_color = config.get('max_intensity_color', '#000000')
+        loc = config.get('max_intensity_loc', 'upper left')
+        x, y, ha, va = _corner_text_pos(loc)
+        ax.text(x, y, f'Max intensity: {_format_intensity(max_int)}',
+                transform=ax.transAxes, fontsize=label_fs,
+                color=label_color, fontweight='bold',
+                ha=ha, va=va, zorder=10)
+
+
+def _corner_text_pos(loc: str) -> tuple:
+    """Map a corner name to (x, y, ha, va) in axes fraction coordinates."""
+    mapping = {
+        'upper left':  (0.015, 0.97, 'left',   'top'),
+        'upper right': (0.985, 0.97, 'right',  'top'),
+        'lower left':  (0.015, 0.03, 'left',   'bottom'),
+        'lower right': (0.985, 0.03, 'right',  'bottom'),
+    }
+    return mapping.get(loc, mapping['upper left'])
+
+
+def _format_intensity(value: float) -> str:
+    """Format an absolute intensity value in scientific notation (e.g. 1.25E6)."""
+    if value == 0:
+        return '0'
+    mantissa, exp = f'{value:.2E}'.split('E')
+    return f'{mantissa}E{int(exp)}'
+
 
 def _ion_color(name, c_b, c_y, c_beta_b, c_beta_y, c_clv_lc, c_clv_sc):
     """Determine color for an ion based on its name prefix."""

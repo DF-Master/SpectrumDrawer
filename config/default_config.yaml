@@ -65,6 +65,11 @@ spectrum:
   ion_label_rotation: 90
   tick_label_fontsize: 9
   spine_width: 0.8
+  # 最大强度绝对值标注：在面板角落显示 100% 相对强度对应的真实强度值
+  show_max_intensity: true
+  max_intensity_fontsize: 9
+  max_intensity_color: '#000000'
+  max_intensity_loc: 'upper left' # upper left / upper right / lower left / lower right
 
 # ── Mass Error Panel ──
 mass_error:

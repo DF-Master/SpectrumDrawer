@@ -43,3 +43,6 @@ Desktop.ini
 
 # User-customized database files
 database/special_ions-*.ini
+
+# User-customized cleaning script (pFind spectra 清洗脚本，不入库)
+scripts/clean_pfind_spectra.py

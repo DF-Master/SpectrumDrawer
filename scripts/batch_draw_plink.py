@@ -67,6 +67,7 @@ from SpectrumDrawer.database.modifications import (
     DEFAULT_LINKER, FALLBACK_MONO_MASS, FALLBACK_LOOP_MASS,
 )
 from SpectrumDrawer.database.ini_loader import get_crosslinker_cleavable_info, get_special_ions_data
+from SpectrumDrawer.report.csv_reporter import CsvReporter
 
 # ── 类型定义 ────────────────────────────────────────────────────────
 _FILE_TYPE_MAP: Dict[str, SpecType] = {
@@ -209,6 +210,8 @@ class PlinkBatchProcessor:
         self.drawer = drawer
         self.parser = BaseIdentificationParser.get_parser('plink')
         self.special_ion_list = special_ion_list
+        # 每个输出目录一个 CSV 报告器（mgf 组处理完统一 flush）
+        self._reporters: Dict[str, CsvReporter] = {}
 
     # ── 主入口 ─────────────────────────────────────────────────────
 
@@ -258,6 +261,11 @@ class PlinkBatchProcessor:
         # ── m/z fallback ───────────────────────────────────────────
         if not skip_fallback:
             self._mz_fallback_pass(mgf_path, contexts)
+
+        # ── flush CSV 报告（每个输出目录两个 CSV）──────────────────
+        for rep in self._reporters.values():
+            rep.flush()
+        self._reporters = {}
 
         elapsed = time.perf_counter() - t_start
         total_drawn = sum(c.draw_count for c in contexts)
@@ -456,7 +464,7 @@ class PlinkBatchProcessor:
         os.makedirs(ctx.out_dir, exist_ok=True)
 
         try:
-            self.drawer.composer.draw(
+            result = self.drawer.composer.draw(
                 spec, entry, out_path, ctx.linker_name,
                 mono_mass=ctx.mono_mass,
                 loop_mass=ctx.loop_mass,
@@ -466,6 +474,18 @@ class PlinkBatchProcessor:
                 short_arm_mass=ctx.short_arm_mass,
                 special_ion_list=self.special_ion_list,
             )
+            if self.drawer.config.report_enabled:
+                rep = self._reporters.get(ctx.out_dir)
+                if rep is None:
+                    rep = CsvReporter(
+                        ctx.out_dir,
+                        coverage_filename=self.drawer.config.coverage_filename,
+                        intensity_filename=self.drawer.config.intensity_filename,
+                        special_ion_list=self.special_ion_list,
+                    )
+                    self._reporters[ctx.out_dir] = rep
+                rep.add(entry, spec, result.stats,
+                        linker_name=ctx.linker_name)
             ctx.draw_count += 1
         except Exception:
             pass

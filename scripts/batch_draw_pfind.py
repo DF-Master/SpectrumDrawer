@@ -54,6 +54,7 @@ from SpectrumDrawer.database.modifications import (
     FALLBACK_MONO_MASS, FALLBACK_LOOP_MASS,
 )
 from SpectrumDrawer.database.ini_loader import get_special_ions_data
+from SpectrumDrawer.report.csv_reporter import CsvReporter
 
 _OUT_DIR = 'spectra_png'
 
@@ -204,6 +205,8 @@ class PfindBatchProcessor:
         self.drawer = drawer
         self.special_ion_list = special_ion_list
         self._out_dir_name = out_dir_name or _OUT_DIR
+        # 每个输出目录一个 CSV 报告器（mgf 处理完统一 flush）
+        self._reporters: Dict[str, CsvReporter] = {}
         self.max_output = drawer.config.max_output_per_file
         if self.max_output is not None and self.max_output <= 0:
             self.max_output = None  # <=0 表示不限制
@@ -242,6 +245,11 @@ class PfindBatchProcessor:
                       if fb[0].title.lower() not in matched_titles]
             if remain:
                 self._mz_fallback_pass(mgf_path, remain)
+
+        # ── flush CSV 报告（每个输出目录两个 CSV）──────────────────
+        for rep in self._reporters.values():
+            rep.flush()
+        self._reporters = {}
 
         elapsed = time.perf_counter() - t_start
         print(f'  [{elapsed:7.1f}s] {os.path.basename(mgf_path)}  '
@@ -386,7 +394,7 @@ class PfindBatchProcessor:
         os.makedirs(out_dir, exist_ok=True)
         out_path = os.path.join(out_dir, f'{out_name}.png')
         try:
-            self.drawer.composer.draw(
+            result = self.drawer.composer.draw(
                 spec, entry, out_path, '',
                 mono_mass=FALLBACK_MONO_MASS,
                 loop_mass=FALLBACK_LOOP_MASS,
@@ -396,6 +404,17 @@ class PfindBatchProcessor:
                 short_arm_mass=0.0,
                 special_ion_list=self.special_ion_list,
             )
+            if self.drawer.config.report_enabled:
+                rep = self._reporters.get(out_dir)
+                if rep is None:
+                    rep = CsvReporter(
+                        out_dir,
+                        coverage_filename=self.drawer.config.coverage_filename,
+                        intensity_filename=self.drawer.config.intensity_filename,
+                        special_ion_list=self.special_ion_list,
+                    )
+                    self._reporters[out_dir] = rep
+                rep.add(entry, spec, result.stats)
             self._cap_counts[exp_name] = self._cap_counts.get(exp_name, 0) + 1
             self._draw_total += 1
         except Exception:

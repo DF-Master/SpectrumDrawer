@@ -138,6 +138,14 @@ processing:
 output:
   max_per_file: 5000
 
+# ── CSV Report ──
+# 在每个输出目录生成 CSV 报告，汇总谱图鉴定覆盖率与相对强度。
+# 关闭后不生成 CSV，不影响 PNG 输出。
+report:
+  enabled: true
+  coverage_filename: 'spectrum_coverage.csv'
+  intensity_filename: 'spectrum_relative_intensity.csv'
+
 # ── spectrum_utils ──
 # If spectrum_utils is not installed as a package, set its path here
 spectrum_utils_path: ''

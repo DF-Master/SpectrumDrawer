@@ -120,3 +120,18 @@ class ConfigManager:
         if v is not None and v <= 0:
             return None  # <=0 表示不限制
         return v
+
+    @property
+    def report_enabled(self) -> bool:
+        """是否输出 CSV 报告（默认开启）。"""
+        return bool(self.get('report', 'enabled', default=True))
+
+    @property
+    def coverage_filename(self) -> str:
+        return self.get('report', 'coverage_filename',
+                        default='spectrum_coverage.csv')
+
+    @property
+    def intensity_filename(self) -> str:
+        return self.get('report', 'intensity_filename',
+                        default='spectrum_relative_intensity.csv')

@@ -20,6 +20,7 @@ from ..utils import (
     rename_xlink_arm_frags,
 )
 from ..database import PROTON
+from ..report.fragment_stats import DrawResult, compute_spectrum_stats
 from .ladder_panel import draw_ladder_panel
 from .spectrum_panel import draw_spectrum_panel
 from .mass_error_panel import draw_mass_error_panel
@@ -494,13 +495,22 @@ class FigureComposer:
         plt.close(fig)
 
         # Return chain-specific counts for xlink
+        stats = compute_spectrum_stats(ident, spectrum, all_matches,
+                                       is_cleavable,
+                                       _special_ion_intensities(
+                                           special_ion_list,
+                                           special_ion_matches))
         if ident.is_xlink:
             n_a = len(ident.alpha_seq) - 1
             n_b = len(ident.beta_seq) - 1
-            return (b_count, y_count, b_p, y_p, len(all_matches),
-                    alpha_b_count, alpha_y_count, n_a,
-                    beta_b_count, beta_y_count, n_b)
-        return b_count, y_count, b_p, y_p, len(all_matches)
+            return DrawResult(
+                (b_count, y_count, b_p, y_p, len(all_matches),
+                 alpha_b_count, alpha_y_count, n_a,
+                 beta_b_count, beta_y_count, n_b),
+                stats,
+            )
+        return DrawResult((b_count, y_count, b_p, y_p, len(all_matches)),
+                          stats)
 
 
 def _build_precursor_matches(ident: Identification,
@@ -765,6 +775,8 @@ def _match_special_ions(spectrum: Spectrum,
                          special_ion_list: list = None) -> list:
     """Match special ions (e.g. immonium ions) against observed peaks.
 
+    容差窗口内取相对强度最高的峰（与 match_fragments 相同的选择逻辑）。
+
     Parameters
     ----------
     spectrum : Spectrum
@@ -781,17 +793,43 @@ def _match_special_ions(spectrum: Spectrum,
     if not special_ion_list:
         return []
 
+    # 全零强度谱图兜底，避免除零（与 compute_spectrum_stats 一致）
+    max_int = spectrum.max_intensity
+    if max_int <= 0:
+        max_int = 1.0
+
     results = []
     for ion in special_ion_list:
         theo_mz = ion['mz']
         tol_ppm = ion.get('ppm_tol', 20.0)
         tol_da = theo_mz * tol_ppm / 1e6
-        diff = np.abs(spectrum.mz - theo_mz)
-        idx = np.argmin(diff)
-        if diff[idx] < tol_da:
-            obs_mz = spectrum.mz[idx]
-            int_norm = spectrum.intensity[idx] / spectrum.max_intensity * 100
+        # 与 match_fragments 一致：容差窗口内取相对强度最高的峰
+        mask = ((spectrum.mz >= theo_mz - tol_da) &
+                (spectrum.mz <= theo_mz + tol_da))
+        if np.any(mask):
+            idx = np.argmax(spectrum.intensity[mask])
+            obs_mz = spectrum.mz[mask][idx]
+            int_norm = spectrum.intensity[mask][idx] / max_int * 100
             ppm = (obs_mz - theo_mz) / theo_mz * 1e6
             results.append((ion['label'], ion['mz'], obs_mz, int_norm,
                             ppm, ion['color']))
     return results
+
+
+def _special_ion_intensities(special_ion_list: list,
+                             special_ion_matches: list) -> dict:
+    """特殊离子相对强度（0~1，与强度 CSV 一致）：{ion_name: rel_int}。
+
+    仅统计匹配到的特殊离子；label 可能重复（如 Leu/Ile），
+    按 mz 关联回特殊离子列表以确定列名（ini 中的 short_name）。
+    """
+    if not special_ion_list or not special_ion_matches:
+        return {}
+    result = {}
+    for ion in special_ion_list:
+        name = ion.get('name') or ion.get('label')
+        for m in special_ion_matches:
+            if m[0] == ion['label'] and abs(m[1] - ion['mz']) < 1e-6:
+                result[name] = m[3] / 100.0  # 0-100 → 0-1
+                break
+    return result

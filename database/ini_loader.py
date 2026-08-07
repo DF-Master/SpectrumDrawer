@@ -381,6 +381,7 @@ def parse_special_ions_ini(path=None):
                 except ValueError:
                     pass
             result[name] = {
+                'name': name,
                 'mz': mz,
                 'label': label,
                 'color': color,

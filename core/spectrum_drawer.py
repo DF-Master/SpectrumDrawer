@@ -10,6 +10,7 @@ from ..readers import BaseSpectrumReader
 from ..parsers import BaseIdentificationParser
 from ..models import Identification, Spectrum, SpecType
 from ..draw import FigureComposer
+from ..report.csv_reporter import CsvReporter
 from ..database.modifications import (
     get_crosslinker_mono_mass, get_crosslinker_xlink_mass,
     DEFAULT_LINKER, FALLBACK_MONO_MASS, FALLBACK_LOOP_MASS,
@@ -35,6 +36,7 @@ class SpectrumDrawer:
         configure_mod_names(fix_names=self.config.fix_mod_names,
                             var_names=self.config.var_mod_names)
         self.composer = FigureComposer(self.config)
+        self._reporter: Optional[CsvReporter] = None  # run() 内按开关创建
 
     # ── public API ────────────────────────────────────────────────
 
@@ -104,6 +106,18 @@ class SpectrumDrawer:
                     special_ion_list = selected
                 else:
                     special_ion_list = None
+
+        # ── CSV 报告（默认开启，可通过 config report.enabled 关闭）──
+        # 需在特殊离子解析之后创建，以便把 special_ion_list 传给报告器
+        # （启用时强度 CSV 末尾追加 spint_<short_name> 列）。
+        self._reporter = None
+        if self.config.report_enabled:
+            self._reporter = CsvReporter(
+                out_dir,
+                coverage_filename=self.config.coverage_filename,
+                intensity_filename=self.config.intensity_filename,
+                special_ion_list=special_ion_list,
+            )
 
         # ── load identifications & build target structures ────────
         print(f'Reading identification file: {ident_path}')
@@ -282,6 +296,11 @@ class SpectrumDrawer:
             print(f'  Precursor-m/z-matched: {n_mz_match}')
         print(f'Output: {out_dir}')
 
+        # ── flush CSV 报告 ────────────────────────────────────────
+        if self._reporter is not None:
+            self._reporter.flush()
+            print(f'CSV report written to: {out_dir}')
+
     # ── helpers ───────────────────────────────────────────────────
 
     def _mz_fallback_pass(self, spectrum_path: str,
@@ -382,6 +401,9 @@ class SpectrumDrawer:
                 short_arm_mass=short_arm_mass,
                 special_ion_list=special_ion_list,
             )
+            if self._reporter is not None:
+                self._reporter.add(entry, spec, result.stats,
+                                   linker_name=linker_name)
             if entry.is_xlink and len(result) == 11:
                 b_c, y_c, b_p, y_p, n_match, \
                     a_b, a_y, a_p, b_b, b_y, b_p2 = result

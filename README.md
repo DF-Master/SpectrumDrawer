@@ -30,6 +30,7 @@ MS/MS 谱图可视化工具，专为交联质谱 (Cross-Linking Mass Spectrometr
 - **前体离子匹配**：完整前体离子、可裂解臂前体离子、中性丢失变体
 - **中性丢失离子**：自动计算并标注带中性丢失的碎片离子
 - **特殊离子标注**：支持亚胺离子 (immonium ions) 等特殊 m/z 离子的自动标注，颜色、容差可自定义
+- **CSV 鉴定报告**：自动输出 `spectrum_coverage.csv`（b/y 离子覆盖率）与 `spectrum_relative_intensity.csv`（相对强度）；可裂解交联剂按普通 b/y、b/y[lc/sc]（独立）、合并三类统计；开启特殊离子时两个 CSV 末尾追加 `spint_*` 相对强度列
 - **高度可配置**：通过 YAML 配置文件自定义颜色、字体、布局等所有视觉参数
 
 ---
@@ -172,6 +173,30 @@ name=m/z,显示标签,颜色,ppm容差
 
 例如：`Leu=86.097,Leu/Ile+,#8B4513,20.0`
 
+注意：
+
+- **short_name 必须全局唯一**（用作 CSV 列名与 `--special-ions` 选择标识），重复时后一条会覆盖前一条
+- 匹配逻辑与 b/y 碎片离子一致：容差窗口内若有多个峰，取**相对强度最高**的峰
+- 开启特殊离子时，两个 CSV 末尾各追加 `spint_<short_name>` 列（0~1 相对强度，与强度 CSV 归一化方式一致），未匹配的离子留空
+
+---
+
+## CSV 鉴定报告
+
+默认开启（可通过 `report.enabled` 关闭），在输出目录生成两个 CSV：
+
+| 文件                              | 内容                                                                                                     |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `spectrum_coverage.csv`           | 每张谱图的 b/y 离子覆盖率（α/β 链，如 `4/14`），可裂解交联剂另附 lc/sc 独立与合并统计，以及 α+β 总覆盖率 |
+| `spectrum_relative_intensity.csv` | 每张谱图的 b/y 相对强度合计（按谱图最大强度归一化，0~1），同样分普通 / lc/sc / 合并三类                  |
+
+统计口径：
+
+- 覆盖率按**位点去重**：同一离子不同电荷态（b3+1 / b3+2）及中性丢失（b3\*）只算一个位点
+- y 离子位点按 `n - i` 换算（y*i 与 b*{n-i} 切割位点相同），b/y 并集不会高估
+- 相对强度位点内取最高强度，避免同一峰重复计数
+- 开启特殊离子时两个 CSV 末尾追加 `spint_<short_name>` 列（0~1 相对强度）
+
 ---
 
 ## 输出示例
@@ -195,17 +220,18 @@ output/
 
 主要配置项：
 
-| 分类            | 说明                                         |
-| --------------- | -------------------------------------------- |
-| `figure`        | 图片尺寸、DPI、边距、面板比例                |
-| `ladder`        | 序列梯子图布局（间距、字体、离子括号样式）   |
-| `spectrum`      | 谱图面板（峰线宽、匹配线宽、离子标签）       |
-| `mass_error`    | 质量误差面板（散点大小、Y 轴范围）           |
-| `colors`        | 各类离子颜色（b 离子、y 离子、可裂解离子等） |
-| `processing`    | 处理参数（容差 ppm、离子类型、最大电荷态）   |
-| `modifications` | 固定/可变修饰名称列表                        |
-| `crosslinker`   | 默认交联剂名称与质量                         |
-| `title`         | 标题栏配置（字体大小、交联剂/修饰缩写长度）  |
+| 分类            | 说明                                                                     |
+| --------------- | ------------------------------------------------------------------------ |
+| `figure`        | 图片尺寸、DPI、边距、面板比例                                            |
+| `ladder`        | 序列梯子图布局（间距、字体、离子括号样式）                               |
+| `spectrum`      | 谱图面板（峰线宽、匹配线宽、离子标签）                                   |
+| `mass_error`    | 质量误差面板（散点大小、Y 轴范围）                                       |
+| `colors`        | 各类离子颜色（b 离子、y 离子、可裂解离子等）                             |
+| `processing`    | 处理参数（容差 ppm、离子类型、最大电荷态）                               |
+| `report`        | 鉴定报告开关与文件名（enabled / coverage_filename / intensity_filename） |
+| `modifications` | 固定/可变修饰名称列表                                                    |
+| `crosslinker`   | 默认交联剂名称与质量                                                     |
+| `title`         | 标题栏配置（字体大小、交联剂/修饰缩写长度）                              |
 
 ---
 
@@ -222,6 +248,9 @@ SpectrumDrawer/
 ├── models/
 │   ├── spectrum.py          # 谱图数据模型
 │   └── identification.py    # 鉴定结果数据模型
+├── report/
+│   ├── fragment_stats.py    # 覆盖率 / 相对强度统计（含特殊离子强度）
+│   └── csv_reporter.py      # CSV 报告写入（覆盖率 + 相对强度）
 ├── readers/
 │   └── mgf_reader.py        # MGF 谱图文件读取
 ├── parsers/
@@ -248,7 +277,8 @@ SpectrumDrawer/
 │   ├── spectrum_panel.py    # 谱图 stick 图绘制
 │   └── mass_error_panel.py  # 质量误差散点图绘制
 ├── scripts/
-│   └── batch_draw_plink.py  # pLink3 批量谱图绘制快捷脚本
+│   ├── batch_draw_plink.py  # pLink3 批量谱图绘制快捷脚本
+│   └── batch_draw_pfind.py  # pFind 批量谱图绘制快捷脚本
 └── test/
     ├── test_input/          # 测试数据
     └── output/              # 测试输出
@@ -288,9 +318,15 @@ SpectrumDrawer/
 
 ## 版本
 
-当前版本：**v0.2.1** (Beta)
+当前版本：**v0.3.0** (Beta)
 
 ### 更新日志
+
+**v0.3.0**
+
+- 新增 CSV 鉴定报告：自动输出 `spectrum_coverage.csv`（b/y 离子覆盖率）与 `spectrum_relative_intensity.csv`（相对强度，按谱图最大强度归一化），通过 `report.enabled` 配置控制，默认开启
+- 开启特殊离子时，两个 CSV 末尾追加 `spint_<short_name>` 相对强度列（0~1），列名取自 ini 的 short_name
+- 特殊离子匹配逻辑与 b/y 碎片离子统一：容差窗口内取相对强度最高的峰
 
 **v0.2.1**
 

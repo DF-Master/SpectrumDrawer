@@ -488,7 +488,9 @@ class PlinkBatchProcessor:
                         linker_name=ctx.linker_name)
             ctx.draw_count += 1
         except Exception:
-            pass
+            import traceback
+            print(f'  Error drawing {out_name}: {entry.title}')
+            traceback.print_exc()
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -1,6 +1,7 @@
 """Figure composer — assembles ladder, spectrum, and mass error panels."""
 
 import os
+import time
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -490,9 +491,21 @@ class FigureComposer:
 
         # ── Save ──
         os.makedirs(os.path.dirname(out_path) or '.', exist_ok=True)
-        fig.savefig(out_path, dpi=fig_cfg.get('dpi', 300),
-                    facecolor='white', edgecolor='none')
-        plt.close(fig)
+        try:
+            # Windows 下高并发写入偶发瞬时文件锁（杀软/索引），重试几次；
+            # 连续失败 5 次则抛出，由调用方处理
+            for _attempt in range(5):
+                try:
+                    fig.savefig(out_path, dpi=fig_cfg.get('dpi', 300),
+                                facecolor='white', edgecolor='none')
+                    break
+                except PermissionError:
+                    if _attempt >= 4:
+                        raise
+                    time.sleep(0.5)
+        finally:
+            # 无论保存成功与否都关闭 figure，防止长时间批量运行时内存累积
+            plt.close(fig)
 
         # Return chain-specific counts for xlink
         stats = compute_spectrum_stats(ident, spectrum, all_matches,

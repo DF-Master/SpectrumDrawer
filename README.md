@@ -4,13 +4,13 @@ MS/MS 谱图可视化工具，专为交联质谱 (Cross-Linking Mass Spectrometr
 
 从 pFind/pLink 或 pSimXL 的鉴定结果出发，自动生成带有序列图、谱图注释和质量误差面板的出版级 PNG 图片。
 
-![1786429410252](image/README/1786429410252.png)
-
 ![1786429456792](image/README/1786429456792.png)
 
-![1785299563493](image/README/1785299563493.png)
+![1786430217989](image/README/1786430217989.png)
 
-![1785307086035](image/README/1785307086035.png)
+![1786432236860](image/README/1786432236860.png)
+
+![1786430051600](image/README/1786430051600.png)
 
 ---
 
@@ -186,11 +186,11 @@ name=m/z,显示标签,颜色,ppm容差
 
 | 脚本                       | 职责                                                                                                                                     |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `scan_report_ions.py`      | 脚本 A：按 title 清单（或 `--all`）翻阅 MGF，统计报告离子的检出谱图数、绝对/相对强度与 TopN 相关峰                                       |
+| `scan_report_ions.py`      | 脚本 A：按 title 清单（或`--all`）翻阅 MGF，统计报告离子的检出谱图数、绝对/相对强度与 TopN 相关峰                                        |
 | `pparse_quant.py`          | 脚本 B：对 pParse 产物（.ms1/.ms2/.csv）做母离子-产物离子定量，输出每谱图宽表、检出率矩阵与 Ratio 分位数矩阵                             |
-| `group_by_plink.py`        | 脚本 C：读 pLink 原始报告 CSV，按 `Peptide_Type`（mono-link/regular 等）分组并按多阈值 FDR 截断，输出各组的 title 清单                   |
+| `group_by_plink.py`        | 脚本 C：读 pLink 原始报告 CSV，按`Peptide_Type`（mono-link/regular 等）分组并按多阈值 FDR 截断，输出各组的 title 清单                    |
 | `compare_mono_regular.py`  | mono vs regular 分层对比：按各 FDR 阈值 title 集过滤逐谱图结果，按实验/对照文件前缀分层计算检出率（A 模式）与检出率+Ratio 分位（B 模式） |
-| `special_ions_pipeline.py` | 统一入口：以 `--step a/b/c/all/compare` 编排上述脚本，透传各脚本参数                                                                     |
+| `special_ions_pipeline.py` | 统一入口：以`--step a/b/c/all/compare` 编排上述脚本，透传各脚本参数                                                                      |
 
 ```bash
 # 只跑脚本 C（pLink 分组 + FDR -> title 清单）

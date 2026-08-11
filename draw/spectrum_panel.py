@@ -92,11 +92,19 @@ def draw_spectrum_panel(ax, spec, reg_matches: List[MatchResult],
 
     # Draw intact precursor matches (same style as b/y ions)
     if precursor_matches:
+        # Stagger labels that share the same m/z (e.g. α and α[lc] coincide
+        # when the loop mass equals the long arm, as for SDA/BDG-H), so both
+        # remain readable.
+        from collections import Counter
+        mz_order = Counter()
+        stagger = config.get('precursor_label_stagger', 4.0)
         for label, obs_mz, int_norm, ppm in precursor_matches:
+            offset = mz_order[obs_mz] * stagger
+            mz_order[obs_mz] += 1
             ax.vlines(obs_mz, 0, int_norm,
                       colors=c_precursor, linewidths=match_lw,
                       zorder=3)
-            ax.text(obs_mz, int_norm + 2, label,
+            ax.text(obs_mz, int_norm + 2 + offset, label,
                     ha='center', va='bottom', fontsize=ion_fs,
                     fontweight='bold', color=c_precursor,
                     rotation=ion_rot, zorder=10)

@@ -586,12 +586,14 @@ def _build_precursor_matches(ident: Identification,
         if m:
             results.append(m)
 
-        # α[lc] and α[sc] for cleavable crosslinkers on mono/loop-link
+        # α[lc] and α[sc] for cleavable crosslinkers on mono/loop-link.
+        # Arms are only meaningful when their mass > 0 (loop/mono mass may
+        # equal an arm mass, e.g. SDA/BDG-H loop == long arm — in that case
+        # α[lc] and α share the same m/z and BOTH labels are annotated).
         if is_cleavable and (ident.is_mono or ident.is_loop):
             site = ident.alpha_xlink_site if ident.alpha_xlink_site > 0 else 0
-            full_mass = mods_dict.get(site, 0.0)
 
-            if site > 0 and long_arm_mass != full_mass:
+            if site > 0 and long_arm_mass > 0:
                 lc_mods = dict(mods_dict)
                 lc_mods[site] = long_arm_mass
                 lc_mz = calc_precursor_mz(ident.alpha_seq, lc_mods, z)
@@ -599,7 +601,7 @@ def _build_precursor_matches(ident: Identification,
                 if m:
                     results.append(m)
 
-            if site > 0 and short_arm_mass != full_mass:
+            if site > 0 and short_arm_mass > 0:
                 sc_mods = dict(mods_dict)
                 sc_mods[site] = short_arm_mass
                 sc_mz = calc_precursor_mz(ident.alpha_seq, sc_mods, z)
@@ -626,17 +628,16 @@ def _build_precursor_matches(ident: Identification,
                 crosslink_site = (ident.alpha_xlink_site
                                   if ident.alpha_xlink_site > 0 else 0)
                 if crosslink_site in nl_info:
-                    full_mass = mods_dict.get(crosslink_site, 0.0)
                     nl_masses_clv = nl_info[crosslink_site]
                     for nl_mass in nl_masses_clv:
-                        if site > 0 and long_arm_mass != full_mass:
+                        if site > 0 and long_arm_mass > 0:
                             lc_mods = dict(mods_dict)
                             lc_mods[site] = long_arm_mass - nl_mass
                             lc_mz = calc_precursor_mz(ident.alpha_seq, lc_mods, z)
                             m = _match_one(lc_mz, f'\u03b1[lc]{ch}*')
                             if m:
                                 results.append(m)
-                        if site > 0 and short_arm_mass != full_mass:
+                        if site > 0 and short_arm_mass > 0:
                             sc_mods = dict(mods_dict)
                             sc_mods[site] = short_arm_mass - nl_mass
                             sc_mz = calc_precursor_mz(ident.alpha_seq, sc_mods, z)

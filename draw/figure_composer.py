@@ -228,6 +228,14 @@ class FigureComposer:
                 long_arm=long_arm_mass, short_arm=short_arm_mass,
             )
 
+            # L-ladder: complete-chain ions (α/βn+ and α/β[lc/sc]n+)
+            l_ladder = _build_xlink_l_ladder_matches(
+                ident, xlink_mass, spectrum, tol_ppm,
+                max_charge=max_charge,
+                is_cleavable=is_cleavable,
+                long_arm=long_arm_mass, short_arm=short_arm_mass,
+            )
+
             # ProForma (use α chain only for spectrum_utils annotation)
             proforma_str = build_proforma(ident.alpha_seq, alpha_mods)
             proforma_str += f'/{ident.charge}'
@@ -309,6 +317,12 @@ class FigureComposer:
                 nl_info=nl_info, max_charge=max_charge,
             )
 
+            # L-ladder: intact-precursor chain ions (αn+ and α[lc/sc]n+)
+            l_ladder = _l_ladder_from_precursor_matches(
+                precursor_matches, is_cleavable,
+                long_arm_mass, short_arm_mass,
+            )
+
             # ProForma
             proforma_str = build_proforma(ident.alpha_seq, mods_dict)
             proforma_str += f'/{ident.charge}'
@@ -387,6 +401,7 @@ class FigureComposer:
                 ax_lad, ident.alpha_seq, ident.beta_seq, fstat, ident.charge,
                 (ident.alpha_xlink_site, ident.beta_xlink_site),
                 alpha_show, beta_show, mz_min, mz_max, lad_cfg,
+                l_ladder=l_ladder,
             )
         else:
             xlink_pos = (ident.alpha_xlink_site
@@ -400,7 +415,8 @@ class FigureComposer:
 
             draw_ladder_panel(ax_lad, ident.alpha_seq, fstat, ident.charge,
                               mod_show, mz_min, mz_max, xlink_pos,
-                              loop_sites, show_loop_arc, lad_cfg)
+                              loop_sites, show_loop_arc, lad_cfg,
+                              l_ladder=l_ladder)
 
         draw_spectrum_panel(ax_spec, spec_obj, all_matches, max_int, spec_cfg,
                             precursor_matches=precursor_matches,
@@ -775,6 +791,100 @@ def _build_xlink_precursor_matches(ident: Identification,
                             results.append(m)
 
     return results
+
+
+def _build_xlink_l_ladder_matches(ident: Identification,
+                                   linker_mass: float,
+                                   spectrum,
+                                   tol_ppm: float,
+                                   max_charge: int = 2,
+                                   is_cleavable: bool = False,
+                                   long_arm: float = 0.0,
+                                   short_arm: float = 0.0) -> dict:
+    """Match complete-chain ions for the L-ladder of a cross-link.
+
+    Searches the intact α/β chain (αn+/βn+) and, for cleavable
+    crosslinkers, the arm adducts (α[lc]n+, α[sc]n+, β[lc]n+, β[sc]n+)
+    across charge states 1 .. max_charge (plus the identified charge).
+    Arm masses <= 0 (e.g. short_arm=0 for SDA(DESTHY)) are skipped.
+
+    Returns
+    -------
+    dict
+        {label: (obs_mz, int_norm)} where label carries no charge
+        (e.g. 'α', 'α[lc]', 'β[sc]').  Each label appears at most once.
+    """
+    from ..utils.proforma_utils import _chain_neutral_mass
+
+    alpha_base = _chain_neutral_mass(
+        ident.alpha_seq, ident.get_alpha_varmod_list())
+    beta_base = _chain_neutral_mass(
+        ident.beta_seq, ident.get_beta_varmod_list())
+
+    results = {}
+
+    def _match_one(theo_mz):
+        tol_da = theo_mz * tol_ppm / 1e6
+        diff = np.abs(spectrum.mz - theo_mz)
+        idx = np.argmin(diff)
+        if diff[idx] < tol_da:
+            int_norm = spectrum.intensity[idx] / spectrum.max_intensity * 100
+            return (spectrum.mz[idx], int_norm)
+        return None
+
+    charges = [ident.charge] + [z for z in range(1, max_charge + 1)
+                                if z != ident.charge]
+
+    def _match_chain(mass, label):
+        for z in charges:
+            mz = (mass + z * PROTON) / z
+            m = _match_one(mz)
+            if m:
+                results[label] = m
+                break  # label presence is enough; keep first charge hit
+
+    # Intact chains: αn+ / βn+
+    _match_chain(alpha_base, '\u03b1')
+    _match_chain(beta_base, '\u03b2')
+
+    # Cleavable arm adducts: α/β[lc]n+, α/β[sc]n+
+    if is_cleavable:
+        for arm_label, arm_mass in [('lc', long_arm), ('sc', short_arm)]:
+            if arm_mass <= 0:
+                continue
+            _match_chain(alpha_base + arm_mass, f'\u03b1[{arm_label}]')
+            _match_chain(beta_base + arm_mass, f'\u03b2[{arm_label}]')
+
+    return results
+
+
+def _l_ladder_from_precursor_matches(precursor_matches: list,
+                                     is_cleavable: bool,
+                                     long_arm: float = 0.0,
+                                     short_arm: float = 0.0) -> dict:
+    """Build the L-ladder label dict for single-chain spectra.
+
+    Reuses the already-matched intact-precursor ions (α, α[lc], α[sc]),
+    strips the charge from the labels and deduplicates.  Neutral-loss
+    variants (``*``) are excluded; arms with mass <= 0 are skipped.
+
+    Returns
+    -------
+    dict
+        {label: (obs_mz, int_norm)}, label without charge
+        (e.g. 'α', 'α[lc]').  Each label appears at most once.
+    """
+    result = {}
+    for label, obs_mz, int_norm, _ppm in precursor_matches:
+        if label.endswith('*'):
+            continue  # neutral-loss variants are not intact ions
+        base = label.split('+')[0]
+        if '[lc]' in base and not (is_cleavable and long_arm > 0):
+            continue
+        if '[sc]' in base and not (is_cleavable and short_arm > 0):
+            continue
+        result.setdefault(base, (obs_mz, int_norm))
+    return result
 
 
 def _iter_nl(nl_info: dict):

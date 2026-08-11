@@ -4,9 +4,9 @@ MS/MS 谱图可视化工具，专为交联质谱 (Cross-Linking Mass Spectrometr
 
 从 pFind/pLink 或 pSimXL 的鉴定结果出发，自动生成带有序列图、谱图注释和质量误差面板的出版级 PNG 图片。
 
-![1785389401708](image/README/1785389401708.png)
+![1786429410252](image/README/1786429410252.png)
 
-![1785298855724](image/README/1785298855724.png)
+![1786429456792](image/README/1786429456792.png)
 
 ![1785299563493](image/README/1785299563493.png)
 
@@ -28,6 +28,7 @@ MS/MS 谱图可视化工具，专为交联质谱 (Cross-Linking Mass Spectrometr
   - MS/MS 谱图（峰标注与离子着色）
   - 质量误差散点图（ppm 偏差）
 - **前体离子匹配**：完整前体离子、可裂解臂前体离子、中性丢失变体
+- **L-ladder 标注**：在每条链序列梯子最左端（yn 位置）标注完整链前体离子
 - **中性丢失离子**：自动计算并标注带中性丢失的碎片离子
 - **特殊离子标注**：支持亚胺离子 (immonium ions) 等特殊 m/z 离子的自动标注，颜色、容差可自定义
 - **CSV 鉴定报告**：自动输出 `spectrum_coverage.csv`（b/y 离子覆盖率）与 `spectrum_relative_intensity.csv`（相对强度）；可裂解交联剂按普通 b/y、b/y[lc/sc]（独立）、合并三类统计；开启特殊离子时两个 CSV 末尾追加 `spint_*` 相对强度列
@@ -179,16 +180,44 @@ name=m/z,显示标签,颜色,ppm容差
 - 匹配逻辑与 b/y 碎片离子一致：容差窗口内若有多个峰，取**相对强度最高**的峰
 - 开启特殊离子时，两个 CSV 末尾各追加 `spint_<short_name>` 列（0~1 相对强度，与强度 CSV 归一化方式一致），未匹配的离子留空
 
+### 特殊离子（报告离子）分析脚本
+
+`scripts/special_ions/` 提供一套面向报告离子（特殊离子）的批量分析流水线，用于从 MGF / pParse / pLink 原始报告出发，完成扫描统计、定量与分层对比：
+
+| 脚本                       | 职责                                                                                                                                     |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `scan_report_ions.py`      | 脚本 A：按 title 清单（或 `--all`）翻阅 MGF，统计报告离子的检出谱图数、绝对/相对强度与 TopN 相关峰                                       |
+| `pparse_quant.py`          | 脚本 B：对 pParse 产物（.ms1/.ms2/.csv）做母离子-产物离子定量，输出每谱图宽表、检出率矩阵与 Ratio 分位数矩阵                             |
+| `group_by_plink.py`        | 脚本 C：读 pLink 原始报告 CSV，按 `Peptide_Type`（mono-link/regular 等）分组并按多阈值 FDR 截断，输出各组的 title 清单                   |
+| `compare_mono_regular.py`  | mono vs regular 分层对比：按各 FDR 阈值 title 集过滤逐谱图结果，按实验/对照文件前缀分层计算检出率（A 模式）与检出率+Ratio 分位（B 模式） |
+| `special_ions_pipeline.py` | 统一入口：以 `--step a/b/c/all/compare` 编排上述脚本，透传各脚本参数                                                                     |
+
+```bash
+# 只跑脚本 C（pLink 分组 + FDR -> title 清单）
+python scripts/special_ions/special_ions_pipeline.py --step c --plink-dir pLink --out-c out_c
+
+# 用脚本 C 生成的 fdr100 title 集跑脚本 A（MGF 扫描）
+python scripts/special_ions/special_ions_pipeline.py --step a --mgf-dir raw \
+    --ions-file database/special_ions-jiangyida.ini \
+    --titles-file out_c/BDG/mono_link.fdr100.titles.txt --out-a out_c_runs_fdr100/BDG_mono
+
+# 分层对比（mode a 用脚本 A 结果；mode b 用脚本 B 结果）
+python scripts/special_ions/special_ions_pipeline.py --step compare --compare-mode a \
+    --runs-dir out_c_runs_fdr100 --out-c out_c --thresholds 0.10,0.50,1.00 --out-compare out_c_runs_fdr100
+```
+
+依赖：Python 3.9+（仅标准库，可选 pandas 输出 xlsx）。脚本 A/B/C 各自的参数与口径见各脚本文件头部的文档字符串。
+
 ---
 
 ## CSV 鉴定报告
 
 默认开启（可通过 `report.enabled` 关闭），在输出目录生成两个 CSV：
 
-| 文件                              | 内容                                                                                                     |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `spectrum_coverage.csv`           | 每张谱图的 b/y 离子覆盖率（α/β 链，如 `4/14`），可裂解交联剂另附 lc/sc 独立与合并统计，以及 α+β 总覆盖率 |
-| `spectrum_relative_intensity.csv` | 每张谱图的 b/y 相对强度合计（按谱图最大强度归一化，0~1），同样分普通 / lc/sc / 合并三类                  |
+| 文件                              | 内容                                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `spectrum_coverage.csv`           | 每张谱图的 b/y 离子覆盖率（α/β 链，如`4/14`），可裂解交联剂另附 lc/sc 独立与合并统计，以及 α+β 总覆盖率 |
+| `spectrum_relative_intensity.csv` | 每张谱图的 b/y 相对强度合计（按谱图最大强度归一化，0~1），同样分普通 / lc/sc / 合并三类                 |
 
 统计口径：
 
@@ -318,9 +347,14 @@ SpectrumDrawer/
 
 ## 版本
 
-当前版本：**v0.3.0** (Beta)
+当前版本：**v0.4.0** (Beta)
 
 ### 更新日志
+
+**v0.4.0**
+
+- 新增α/β-chain完整链前体离子的标注
+- 新增特殊报告离子的额外处理脚本，支持pLink3输出文件
 
 **v0.3.0**
 

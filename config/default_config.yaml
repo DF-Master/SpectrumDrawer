@@ -38,6 +38,9 @@ ladder:
   ion_label_fontsize: 8
   charge_label_fontsize: 11
   charge_label_color: '#555555'
+  # 电荷标注位置微调（以 spacing 为单位的偏移；x 为负表示向左移）
+  charge_label_x_offset: -0.9
+  charge_label_y_offset: 0.85
   residue_color: '#111111'
   mod_residue_color: '#CC0033'
   xlink_ring_size: 20
@@ -55,6 +58,16 @@ ladder:
   xlink_anchor_fraction: 0.1 # 0.5=center, 0.0=left, 1.0=right
   xlink_line_alpha_offset: -4.3 # vertical offset from seq_y_a for line top
   xlink_line_beta_offset: 4.3 # vertical offset from seq_y_b for line bottom
+  # 交联梯子电荷标注位置微调（默认较普通模式再向左移，为 L-ladder 留出空间）
+  xlink_charge_label_x_offset: -0.9
+  xlink_charge_label_y_offset: 1.2
+  # 梯子左侧额外留白（占 m/z 范围的比例），防止左移的电荷/L-ladder 标签被裁切
+  left_pad_fraction: 0.03
+  # ── L-ladder：完整链前体离子（α/βn+ 与可裂解时的 α/β[lc/sc]n+）──
+  # 画在每条链序列梯子的最左边（yn 位置），标签不带电荷；
+  # 括号画法与 y / y[lc/sc] 离子完全一致（普通链走 y 层，[lc/sc] 走 clv 层）
+  l_ladder_enabled: true
+  l_ladder_gap: 0.75 # 同一链 [lc] 与 [sc] 同时匹配时，纵向堆叠的间距
 
 # ── Spectrum Panel ──
 spectrum:

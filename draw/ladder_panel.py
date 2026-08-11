@@ -7,7 +7,8 @@ from typing import Dict, Set
 def draw_ladder_panel(ax, seq: str, fstat: Dict[str, str], charge: int,
                       mod_show: Set[int], spec_xmin: float, spec_xmax: float,
                       xlink_pos: int = 0, loop_sites: tuple = None,
-                      show_loop_arc: bool = False, config: dict = None):
+                      show_loop_arc: bool = False, config: dict = None,
+                      l_ladder: dict = None):
     """Draw the sequence ladder panel (top panel).
 
     Parameters
@@ -29,16 +30,30 @@ def draw_ladder_panel(ax, seq: str, fstat: Dict[str, str], charge: int,
         (site1, site2) for loop-link visualization. If provided, draws an arc.
     config : dict
         Ladder panel configuration from ConfigManager.
+    l_ladder : dict or None
+        Matched intact-precursor chain ion labels: {label: (obs_mz, int_norm)},
+        label without charge, e.g. 'α', 'α[lc]', 'α[sc]'. Drawn as
+        L-brackets at the yn position (leftmost end of the chain), styled
+        exactly like y / y[lc/sc] ions.
     """
     if config is None:
         config = {}
 
     n = len(seq)
-    ax.set_xlim(spec_xmin, spec_xmax)
+
+    # L-ladder: intact-precursor chain ion labels (α and α[lc/sc], no charge)
+    l_ladder = l_ladder or {}
+    l_labels = [lb for lb in ('\u03b1', '\u03b1[lc]', '\u03b1[sc]')
+                if lb in l_ladder]
+    l_gap = config.get('l_ladder_gap', 0.75)  # extra offset when both [lc] and [sc]
+
+    x_range = spec_xmax - spec_xmin
+    # Extend left edge for charge / L-ladder labels (config-adjustable)
+    left_pad = x_range * config.get('left_pad_fraction', 0.0)
+    ax.set_xlim(spec_xmin - left_pad, spec_xmax)
     ax.set_ylim(*config.get('ylim', [-1.5, 2.8]))
     ax.axis('off')
 
-    x_range = spec_xmax - spec_xmin
     first_x = spec_xmin + x_range * config.get('first_x_fraction', 0.04)
     spacing = x_range * config.get('spacing_fraction', 0.04)
     
@@ -69,7 +84,10 @@ def draw_ladder_panel(ax, seq: str, fstat: Dict[str, str], charge: int,
     c_clv_sc = colors.get('cleavable_ion_sc', '#C77DFF')  # light violet
 
     # Charge label at upper-left of sequence
-    ax.text(first_x - spacing * 0.35, seq_y + 0.85, f'{charge}+',
+    # Position adjustable via config (charge_label_x_offset/y_offset, in spacing units);
+    # default shifted left to leave room for the L-ladder.
+    ax.text(first_x + spacing * config.get('charge_label_x_offset', -0.9),
+            seq_y + config.get('charge_label_y_offset', 0.85), f'{charge}+',
             ha='center', va='bottom',
             fontsize=config.get('charge_label_fontsize', 11),
             fontweight='bold',
@@ -226,13 +244,55 @@ def draw_ladder_panel(ax, seq: str, fstat: Dict[str, str], charge: int,
                 fontsize=ion_fs, fontweight='bold', color=color, zorder=10,
                 clip_on=False)
 
+    # ── L-ladder: intact-precursor chain ion at the yn position (leftmost) ──
+    # αn+ and (for cleavable crosslinkers) α[lc/sc]n+.  Labels carry no
+    # charge.  Brackets are styled exactly like y / y[lc/sc] ions.
+    _draw_l_ladder_brackets(
+        ax, first_x - 0.5 * spacing, seq_y, l_labels,
+        tick_len, y_rise, clv_gap, clv_y_off, l_gap, ion_fs, colors,
+        enabled=config.get('l_ladder_enabled', True),
+    )
+
+
+def _draw_l_ladder_brackets(ax, yn_x, seq_y, labels, tick_len, y_rise,
+                            clv_gap, clv_y_off, l_gap, ion_fs, colors,
+                            enabled=True):
+    """Draw L-ladder brackets at the yn position, styled like y / y[lc/sc].
+
+    Plain chain labels (α/β) are drawn at the y-ion layer, [lc]/[sc] arm
+    labels at the clv layer.  When both [lc] and [sc] are present for the
+    same chain they are stacked vertically by ``l_gap``.
+    """
+    if not (enabled and labels):
+        return
+
+    def _bracket(color, y_start, y_outer, label):
+        ax.plot([yn_x, yn_x], [y_start, y_outer], color=color, lw=2.0,
+                zorder=5, clip_on=False, solid_capstyle='round')
+        ax.plot([yn_x, yn_x + tick_len], [y_outer, y_outer], color=color,
+                lw=2.0, zorder=5, clip_on=False, solid_capstyle='round')
+        ax.text(yn_x + tick_len / 2, y_outer + 0.15, label,
+                ha='center', va='bottom', fontsize=ion_fs,
+                fontweight='bold', color=color, zorder=10, clip_on=False)
+
+    clv_order = [x for x in labels if '[' in x]
+    for lb in labels:
+        color = _l_ladder_color(lb, colors)
+        if '[' in lb:
+            y_start = seq_y + y_rise + clv_gap + clv_order.index(lb) * l_gap
+            y_outer = y_start + clv_y_off
+        else:
+            y_start, y_outer = seq_y, seq_y + y_rise
+        _bracket(color, y_start, y_outer, lb)
+
 
 def draw_xlink_ladder_panel(ax, alpha_seq: str, beta_seq: str,
                             fstat: dict, charge: int,
                             xlink_sites: tuple,
                             alpha_show: set, beta_show: set,
                             spec_xmin: float, spec_xmax: float,
-                            config: dict = None):
+                            config: dict = None,
+                            l_ladder: dict = None):
     """Draw cross-link sequence ladder with both α and β chains.
 
     α chain on top, β chain below, with a vertical connecting line
@@ -255,9 +315,21 @@ def draw_xlink_ladder_panel(ax, alpha_seq: str, beta_seq: str,
         Shared x-axis range with spectrum panel.
     config : dict
         Ladder panel configuration.
+    l_ladder : dict or None
+        Matched complete-chain ion labels: {label: (obs_mz, int_norm)},
+        label without charge, e.g. 'α', 'α[lc]', 'β[sc]'. Drawn as
+        L-brackets at the yn position (leftmost end of each chain).
     """
     if config is None:
         config = {}
+
+    # L-ladder: complete-chain ion labels (α/β and α/β[lc/sc], no charge)
+    l_ladder = l_ladder or {}
+    alpha_l_labels = [lb for lb in ('\u03b1', '\u03b1[lc]', '\u03b1[sc]')
+                      if lb in l_ladder]
+    beta_l_labels = [lb for lb in ('\u03b2', '\u03b2[lc]', '\u03b2[sc]')
+                     if lb in l_ladder]
+    l_gap = config.get('l_ladder_gap', 0.75)  # extra offset when both [lc] and [sc]
 
     n_a = len(alpha_seq)
     n_b = len(beta_seq)
@@ -274,9 +346,21 @@ def draw_xlink_ladder_panel(ax, alpha_seq: str, beta_seq: str,
     ylim_margin = config.get('xlink_ylim_margin', 1.0)
     ring_off = config.get('ring_y_offset', 0.5)
 
-    ax.set_xlim(spec_xmin, spec_xmax)
+    # Extend left edge for charge / L-ladder labels (config-adjustable)
+    x_range_full = spec_xmax - spec_xmin
+    left_pad = x_range_full * config.get('left_pad_fraction', 0.0)
+    ax.set_xlim(spec_xmin - left_pad, spec_xmax)
+
     y_min = seq_y_b - b_drop - clv_gap - clv_b_off - ylim_margin
     y_max = seq_y_a + y_rise + clv_gap + clv_y_off + ylim_margin
+    # Extra top height if both [lc] and [sc] L-ladder labels stack at the
+    # clv layer (each chain is placed at its own baseline, so use the max)
+    if config.get('l_ladder_enabled', True):
+        n_clv = max(sum(1 for lb in alpha_l_labels if '[' in lb),
+                    sum(1 for lb in beta_l_labels if '[' in lb))
+        if n_clv > 1:
+            y_max = max(y_max, seq_y_a + y_rise + clv_gap + clv_y_off
+                        + (n_clv - 1) * l_gap + ylim_margin)
     ax.set_ylim(y_min, y_max)
     ax.axis('off')
 
@@ -326,8 +410,13 @@ def draw_xlink_ladder_panel(ax, alpha_seq: str, beta_seq: str,
     ion_fs = config.get('ion_label_fontsize', 8)
 
     # Charge label (left-aligned with the leftmost chain start)
+    # Position adjustable via config (xlink_charge_label_x_offset/y_offset);
+    # default shifted left to leave room for the L-ladder.
     leftmost_first_x = min(first_x_a, first_x_b)
-    ax.text(leftmost_first_x - spacing * 0.35, seq_y_a + 1.2, f'{charge}+',
+    ax.text(leftmost_first_x
+            + spacing * config.get('xlink_charge_label_x_offset', -0.9),
+            seq_y_a + config.get('xlink_charge_label_y_offset', 1.2),
+            f'{charge}+',
             ha='center', va='bottom',
             fontsize=config.get('charge_label_fontsize', 11),
             fontweight='bold',
@@ -505,3 +594,30 @@ def draw_xlink_ladder_panel(ax, alpha_seq: str, beta_seq: str,
     # Draw brackets for both chains
     _draw_chain_brackets(alpha_seq, n_a, seq_y_a, 'α', True, first_x_a)
     _draw_chain_brackets(beta_seq, n_b, seq_y_b, 'β', False, first_x_b)
+
+    # ── L-ladder: complete-chain ions at the yn position (leftmost) ──
+    # α/βn+ and (for cleavable crosslinkers) α/β[lc/sc]n+.  Labels carry
+    # no charge.  Brackets are drawn exactly like y / y[lc/sc] ions:
+    # plain chain at the y-ion layer, [lc]/[sc] arms at the clv layer
+    # (stacked vertically only when both arms are present).
+    _draw_l_ladder_brackets(
+        ax, first_x_a - 0.5 * spacing, seq_y_a, alpha_l_labels,
+        tick_len, y_rise, clv_gap, clv_y_off, l_gap, ion_fs, colors,
+        enabled=config.get('l_ladder_enabled', True),
+    )
+    _draw_l_ladder_brackets(
+        ax, first_x_b - 0.5 * spacing, seq_y_b, beta_l_labels,
+        tick_len, y_rise, clv_gap, clv_y_off, l_gap, ion_fs, colors,
+        enabled=config.get('l_ladder_enabled', True),
+    )
+
+
+def _l_ladder_color(label: str, colors: dict) -> str:
+    """Color for L-ladder labels (complete-chain ions, no charge)."""
+    if '[lc]' in label:
+        return colors.get('cleavable_ion_lc', '#6A0DAD')
+    if '[sc]' in label:
+        return colors.get('cleavable_ion_sc', '#C77DFF')
+    if label.startswith('\u03b2'):
+        return colors.get('beta_y_ion', '#CC3300')
+    return colors.get('y_ion', '#CC0033')

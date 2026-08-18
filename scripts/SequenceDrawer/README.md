@@ -26,6 +26,7 @@ python3 scripts/SequenceDrawer/sequence_drawer_cli.py tdp43.fasta -o test_output
     --title "TDP-43 (Q13148)" \
     --domain RRM1:104:176 --domain RRM2:191:262 --domain CTD:267:414
 ```
+
 - `--domain NAME:START:END` 可多次使用，渲染为半透明色带，图注（legend）画在图的左栏
 - 不需要图注时加 `--no-legend`（左栏可整体裁掉）
 
@@ -68,20 +69,20 @@ python3 scripts/SequenceDrawer/sequence_drawer_cli.py tdp43.fasta -o test_output
 
 ## 常用配置参数（scripts/SequenceDrawer/default_config.yaml）
 
-| 参数 | 含义 |
-| --- | --- |
-| `layout.residues_per_line` | 每行残基数（默认 50） |
-| `layout.number_interval` / `tick_interval` | 数字标记 / 小灰标记间隔（默认 10 / 5） |
-| `layout.block_gap` | 每 10 个残基后留空的格子数 |
-| `layout.residue_gap` | 相邻残基格子间距（给边框/下划线留空间） |
-| `number_line.tick_len` | 小灰标记长度 |
-| `domain.band_height` | **结构域色带高度**（相对格高，默认 2.0；想更宽改大，如 2.2~2.4，注意别顶到上方编号行） |
-| `domain.band_alpha` | 色带透明度 |
-| `style.color_darken` | 字母颜色加深系数（<1 越深） |
-| `style.letter_extra_bold` | 全体字母额外加粗 |
-| `highlight.box_pad` / `box_width` | 边框大小 / 线宽 |
-| `highlight.box_match_residue` / `underline_match_residue` | 边框/下划线颜色是否跟随残基本身颜色 |
-| `font.size` / `font.family` | 字母字号 / 字体（默认 Arial 加粗） |
+| 参数                                                      | 含义                                                                                   |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `layout.residues_per_line`                                | 每行残基数（默认 50）                                                                  |
+| `layout.number_interval` / `tick_interval`                | 数字标记 / 小灰标记间隔（默认 10 / 5）                                                 |
+| `layout.block_gap`                                        | 每 10 个残基后留空的格子数                                                             |
+| `layout.residue_gap`                                      | 相邻残基格子间距（给边框/下划线留空间）                                                |
+| `number_line.tick_len`                                    | 小灰标记长度                                                                           |
+| `domain.band_height`                                      | **结构域色带高度**（相对格高，默认 2.0；想更宽改大，如 2.2~2.4，注意别顶到上方编号行） |
+| `domain.band_alpha`                                       | 色带透明度                                                                             |
+| `style.color_darken`                                      | 字母颜色加深系数（<1 越深）                                                            |
+| `style.letter_extra_bold`                                 | 全体字母额外加粗                                                                       |
+| `highlight.box_pad` / `box_width`                         | 边框大小 / 线宽                                                                        |
+| `highlight.box_match_residue` / `underline_match_residue` | 边框/下划线颜色是否跟随残基本身颜色                                                    |
+| `font.size` / `font.family`                               | 字母字号 / 字体（默认 Arial 加粗）                                                     |
 
 ## 测试
 

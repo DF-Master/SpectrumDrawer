@@ -1,0 +1,106 @@
+# SequenceDrawer 默认配置
+# CLI 参数优先于本文件中的值（如 --residues-per-line 覆盖 layout.residues_per_line）
+
+# ── 序列排版 ──
+layout:
+  residues_per_line: 50 # 一行最多放多少残基字母（默认基础宽度）
+  number_start: 1 # 序列第一个残基的序号
+  tick_interval: 5 # 每 5 个残基画一个小灰色标记 |
+  number_interval: 10 # 每 10 个残基画一个数字标记
+  block_gap: 1 # 每 number_interval 个残基后留空的格子数（示例中的分组留空）
+  residue_gap: 0.18 # 相邻残基字母格子间的额外间距（相对格宽，给边框/下划线留出空间）
+  row_pitch: 3.6 # 相邻两行字母中心的纵向间距（相对格高）
+
+# ── 字体 ──
+font:
+  family: Arial # 默认字体，系统无 Arial 时自动回退
+  weight: bold # 残基字母字重（normal / bold）
+  size: 13 # 残基字母字号 (pt)
+  number_size: 10 # 编号行数字字号
+  title_size: 15 # 标题字号
+
+# ── 编号行 ──
+number_line:
+  tick_color: '#999999' # 小灰标记颜色
+  tick_len: 0.45 # 小灰标记长度（相对格高）
+  tick_linewidth: 1.6
+  number_color: '#555555' # 数字颜色
+  gap_above: 1.25 # 编号行中心与字母行中心的纵向间距（相对格高）
+
+# ── 整体风格 ──
+style:
+  color_darken: 0.78 # 残基默认色加深系数（<1 越深，仅作用于 config 默认色）
+  letter_extra_bold: true # 所有残基字母额外加粗（微偏移叠加）
+
+# ── 残基配色（默认 ClustalX 风格，可按单个残基覆盖）──
+# 分类示意:
+#   常规/疏水 (G A V L I M P) -> 灰色系
+#   负电荷极性 (D E)          -> 绿色系（D 深 E 浅）
+#   正电荷极性 (K R)          -> 棕红色系（K 深 R 浅）
+#   组氨酸     (H)            -> 橙黄
+#   芳香族     (F W Y)        -> 深蓝
+#   极性不带电 (S T N Q)      -> 青色系
+#   半胱氨酸   (C)            -> 黄
+residue_colors:
+  G: '#8F8F8F'
+  A: '#7A7A7A'
+  V: '#6E6E6E'
+  L: '#5A5A5A'
+  I: '#4F4F4F'
+  M: '#9A9A9A'
+  P: '#A88870'
+  D: '#4CB84C'
+  E: '#008F2E'
+  K: '#9C0020'
+  R: '#C05050'
+  H: '#F5A800'
+  F: '#1F4E9C'
+  W: '#274B9E'
+  Y: '#3D6DBF'
+  S: '#00A0A0'
+  T: '#008B8B'
+  N: '#D2691E'
+  Q: '#DA8B4B'
+  C: '#E8C800'
+
+# ── 高亮样式 ──
+highlight:
+  box_color: '#CC0000' # 边框颜色（box_match_residue=true 时改用残基本身颜色）
+  box_width: 2.0 # 边框线宽
+  box_pad: 0.04 # 边框与字母边缘的间距（相对格宽；配合 residue_gap 让边框更大且不重叠）
+  box_y_offset: 0.06 # 边框中心相对字母中心的上移量（相对格高，字母居中的微调）
+  box_match_residue: true # 边框颜色跟随残基本身颜色（如 K/R 用棕红色框）
+  underline_color: '#0044CC'
+  underline_match_residue: true # 下划线颜色跟随残基本身颜色
+  underline_width: 2.5
+  underline_offset: 0.40 # 下划线与字母中心线的纵向距离（相对格高）
+  shadow_color: '#000000'
+  shadow_alpha: 0.22
+  shadow_x: 0.05 # 阴影水平偏移（相对格宽）
+  shadow_y: -0.07 # 阴影垂直偏移（相对格高）
+  bold_dx: 0.035 # 超级加粗：在原字母旁叠加一次的偏移（相对格宽）
+
+# ── 结构域色带 ──
+domain:
+  band_alpha: 0.35 # 色带透明度（越大越明显）
+  band_height:
+    2.0 # 色带高度（相对格高，覆盖字母行及上下留白；
+    # 想更宽改大此值，如 2.2~2.4，注意别顶到上方编号行）
+  band_colors: # 按顺序分配给各结构域（循环使用）
+    - '#FF6B6B'
+    - '#4ECDC4'
+    - '#FFD93D'
+    - '#6BCB77'
+    - '#9B72CF'
+    - '#FF9F40'
+    - '#5DB0E2'
+  legend_show: true # 左上角 legend；不需要时用 --no-legend 关闭（可整体裁掉）
+  legend_fontsize: 10
+  legend_width: 7.0 # 图左预留 legend 栏宽度（数据单位，避免与序列重叠）
+
+# ── 画布 ──
+figure:
+  dpi: 300
+  facecolor: 'white'
+  margin: 0.30 # 四周留白（英寸）
+  title_pad: 0.9 # 标题与编号行顶部的间距（相对格高）

@@ -33,6 +33,9 @@ env/
 # Test output (generated images)
 test/output/
 
+# SequenceDrawer test output
+scripts/SequenceDrawer/test_output/
+
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb

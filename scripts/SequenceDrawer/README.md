@@ -6,6 +6,10 @@
 
 运行环境：Python 3 + matplotlib + pyyaml（仓库 requirements 已包含）。
 
+![1787043862606](image/README/1787043862606.png)
+
+---
+
 ## 基本用法
 
 ```bash

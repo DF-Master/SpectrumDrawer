@@ -105,6 +105,10 @@ Examples:
     parser.add_argument('--special-ions-file', dest='special_ions_file', type=str,
                         default=None,
                         help='Path to custom special_ions.ini file')
+    parser.add_argument('--pdb', dest='pdb_path', type=str, default=None,
+                        help='Path to protein structure PDB file. When CSV '
+                             'reporting is enabled, adds a ca_ca_distance '
+                             'column (Å) for cross-link results.')
 
     args = parser.parse_args()
 
@@ -154,6 +158,7 @@ Examples:
         spec_types=args.spec_types,
         special_ions=args.special_ions,
         special_ions_file=args.special_ions_file,
+        pdb_path=args.pdb_path,
     )
 
 

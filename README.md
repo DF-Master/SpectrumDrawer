@@ -32,6 +32,7 @@ MS/MS 谱图可视化工具，专为交联质谱 (Cross-Linking Mass Spectrometr
 - **中性丢失离子**：自动计算并标注带中性丢失的碎片离子
 - **特殊离子标注**：支持亚胺离子 (immonium ions) 等特殊 m/z 离子的自动标注，颜色、容差可自定义
 - **CSV 鉴定报告**：自动输出 `spectrum_coverage.csv`（b/y 离子覆盖率）与 `spectrum_relative_intensity.csv`（相对强度）；可裂解交联剂按普通 b/y、b/y[lc/sc]（独立）、合并三类统计；开启特殊离子时两个 CSV 末尾追加 `spint_*` 相对强度列
+- **CA-CA 距离（PDB 结构）**：提供 PDB 结构（`--pdb` 或配置 `report.pdb_file`）后，cross-link 结果在 CSV 中自动附加 `ca_ca_distance` 列（交联位点 Cα-Cα 距离，Å），默认开启，位于特殊离子列之前；交联肽段在链序列中严格匹配，多个匹配取最小距离，找不到匹配留空
 - **高度可配置**：通过 YAML 配置文件自定义颜色、字体、布局等所有视觉参数
 
 ---
@@ -249,18 +250,18 @@ output/
 
 主要配置项：
 
-| 分类            | 说明                                                                     |
-| --------------- | ------------------------------------------------------------------------ |
-| `figure`        | 图片尺寸、DPI、边距、面板比例                                            |
-| `ladder`        | 序列梯子图布局（间距、字体、离子括号样式）                               |
-| `spectrum`      | 谱图面板（峰线宽、匹配线宽、离子标签）                                   |
-| `mass_error`    | 质量误差面板（散点大小、Y 轴范围）                                       |
-| `colors`        | 各类离子颜色（b 离子、y 离子、可裂解离子等）                             |
-| `processing`    | 处理参数（容差 ppm、离子类型、最大电荷态）                               |
-| `report`        | 鉴定报告开关与文件名（enabled / coverage_filename / intensity_filename） |
-| `modifications` | 固定/可变修饰名称列表                                                    |
-| `crosslinker`   | 默认交联剂名称与质量                                                     |
-| `title`         | 标题栏配置（字体大小、交联剂/修饰缩写长度）                              |
+| 分类            | 说明                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------- |
+| `figure`        | 图片尺寸、DPI、边距、面板比例                                                                     |
+| `ladder`        | 序列梯子图布局（间距、字体、离子括号样式）                                                        |
+| `spectrum`      | 谱图面板（峰线宽、匹配线宽、离子标签）                                                            |
+| `mass_error`    | 质量误差面板（散点大小、Y 轴范围）                                                                |
+| `colors`        | 各类离子颜色（b 离子、y 离子、可裂解离子等）                                                      |
+| `processing`    | 处理参数（容差 ppm、离子类型、最大电荷态）                                                        |
+| `report`        | 鉴定报告开关与文件名（enabled / coverage_filename / intensity_filename / ca_distance / pdb_file） |
+| `modifications` | 固定/可变修饰名称列表                                                                             |
+| `crosslinker`   | 默认交联剂名称与质量                                                                              |
+| `title`         | 标题栏配置（字体大小、交联剂/修饰缩写长度）                                                       |
 
 ---
 
@@ -299,6 +300,7 @@ SpectrumDrawer/
 ├── utils/
 │   ├── ion_calculator.py    # 理论 b/y/a/c/z 离子 m/z 计算
 │   ├── fragment_matcher.py  # 理论碎片与观测峰匹配
+│   ├── pdb_reader.py        # PDB 结构读取：链序列 + CA 坐标，交联位点 CA-CA 距离
 │   └── proforma_utils.py    # ProForma 字符串构建与修饰字典
 ├── draw/
 │   ├── figure_composer.py   # 图形组装（三面板布局）
@@ -347,9 +349,15 @@ SpectrumDrawer/
 
 ## 版本
 
-当前版本：**v0.4.0** (Beta)
+当前版本：**v0.5.0** (Beta)
 
 ### 更新日志
+
+**v0.5.0**
+
+- 新增 CA-CA 距离（默认开启）：提供 PDB 结构（CLI `--pdb` 或配置 `report.pdb_file`）后，cross-link 结果在 CSV 报告中自动附加 `ca_ca_distance` 列（交联位点 Cα-Cα 距离，Å），位于特殊离子列之前
+- 交联肽段在结构链序列中严格匹配：多个匹配取最小距离，找不到匹配留空；无 SEQRES 的 PDB（AlphaFold/pymol 导出等）按 ATOM 残基自动重建链序列
+- 在Scripts里新增了小工具SequenceDrawer和CrosslinkerProps，详见工具内部README.md
 
 **v0.4.0**
 

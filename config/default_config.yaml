@@ -158,6 +158,12 @@ report:
   enabled: true
   coverage_filename: 'spectrum_coverage.csv'
   intensity_filename: 'spectrum_relative_intensity.csv'
+  # CA-CA 距离：默认开启。提供 PDB 结构（--pdb 或下方 pdb_file）后，
+  # cross-link 结果在 CSV 中附加一列 ca_ca_distance（交联位点 Cα-Cα 距离，Å），
+  # 位于特殊离子列之前；多匹配取最小值，找不到匹配则留空。
+  ca_distance: true
+  # PDB 结构文件路径（可选；CLI --pdb 优先于此处）
+  pdb_file: ''
 
 # ── spectrum_utils ──
 # If spectrum_utils is not installed as a package, set its path here

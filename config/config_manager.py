@@ -135,3 +135,13 @@ class ConfigManager:
     def intensity_filename(self) -> str:
         return self.get('report', 'intensity_filename',
                         default='spectrum_relative_intensity.csv')
+
+    @property
+    def ca_distance_enabled(self) -> bool:
+        """是否在 CSV 报告中输出 cross-link 的 CA-CA 距离列（默认开启）。"""
+        return bool(self.get('report', 'ca_distance', default=True))
+
+    @property
+    def pdb_file(self) -> str:
+        """PDB 结构文件路径（report.pdb_file，可选）。"""
+        return self.get('report', 'pdb_file', default='') or ''

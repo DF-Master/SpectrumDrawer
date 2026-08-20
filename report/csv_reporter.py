@@ -41,21 +41,35 @@ _INTENSITY_HEADERS = [
 class CsvReporter:
     """按输出目录累积谱图统计结果，flush 时写出两个 CSV 文件。"""
 
+    #: cross-link 结果附加的交联位点 CA-CA 距离（Å）列名
+    CA_DISTANCE_HEADER = 'ca_ca_distance'
+
     def __init__(self, out_dir: str,
                  coverage_filename: str = 'spectrum_coverage.csv',
                  intensity_filename: str = 'spectrum_relative_intensity.csv',
-                 special_ion_list: list = None):
+                 special_ion_list: list = None,
+                 structure=None,
+                 ca_distance: bool = True):
         self.out_dir = out_dir
         self.coverage_filename = coverage_filename
         self.intensity_filename = intensity_filename
+        # CA-CA 距离：默认开启。提供 PDB 结构（structure）后，
+        # cross-link 结果在特殊离子列之前附加一列 ca_ca_distance。
+        self._structure = structure
+        self._ca_distance = ca_distance
         # 启用特殊离子时，在两个 CSV 末尾各追加每离子一列（列名 = ini short_name）
         self._sp_names = []
         if special_ion_list:
             self._sp_names = [ion.get('name') or ion.get('label')
                               for ion in special_ion_list]
         self._sp_headers = [f'spint_{n}' for n in self._sp_names]
-        self._coverage_headers = _COVERAGE_HEADERS + self._sp_headers
-        self._intensity_headers = _INTENSITY_HEADERS + self._sp_headers
+        self._coverage_headers = list(_COVERAGE_HEADERS)
+        self._intensity_headers = list(_INTENSITY_HEADERS)
+        if self._ca_distance:
+            self._coverage_headers.append(self.CA_DISTANCE_HEADER)
+            self._intensity_headers.append(self.CA_DISTANCE_HEADER)
+        self._coverage_headers += self._sp_headers
+        self._intensity_headers += self._sp_headers
         self._rows: List[Tuple[Dict, Dict]] = []
 
     def add(self, ident: Identification, spectrum: Spectrum,
@@ -63,10 +77,24 @@ class CsvReporter:
         """登记一张谱图的统计行。"""
         if stats is None:
             return
+        ca_value = self._compute_ca_distance(ident)
+        ca_header = self.CA_DISTANCE_HEADER if self._ca_distance else None
         self._rows.append((_coverage_row(ident, spectrum, stats, linker_name,
-                                         self._sp_names),
+                                         self._sp_names, ca_header, ca_value),
                            _intensity_row(ident, spectrum, stats, linker_name,
-                                          self._sp_names)))
+                                          self._sp_names, ca_header, ca_value)))
+
+    def _compute_ca_distance(self, ident: Identification):
+        """计算 cross-link 交联位点间的 CA-CA 距离；非 cross-link 或无结构返回 None。"""
+        if self._structure is None:
+            return None
+        if not ident.is_xlink:
+            return None
+        if ident.alpha_xlink_site <= 0 or ident.beta_xlink_site <= 0:
+            return None
+        return self._structure.get_ca_distance(
+            ident.alpha_seq, ident.alpha_xlink_site,
+            ident.beta_seq, ident.beta_xlink_site)
 
     def flush(self):
         """将累积的行写入两个 CSV 文件。无行时不做任何事。"""
@@ -87,6 +115,13 @@ def _fmt(value, ndigits: int = 4):
     if value is None or value == '':
         return ''
     return round(value, ndigits)
+
+
+def _fmt_dist(value):
+    """CA-CA 距离（Å）保留 2 位小数；无匹配记录为空。"""
+    if value is None or value == '':
+        return ''
+    return round(value, 2)
 
 
 def _mods_str(mods) -> str:
@@ -120,7 +155,8 @@ def _base_row(ident: Identification, spectrum: Spectrum,
 
 def _coverage_row(ident: Identification, spectrum: Spectrum,
                   stats: SpectrumStats, linker_name: str = None,
-                  sp_names: List[str] = None) -> dict:
+                  sp_names: List[str] = None,
+                  ca_header: str = None, ca_value: float = None) -> dict:
     row = _base_row(ident, spectrum, linker_name)
     alpha, beta = stats.alpha, stats.beta
     is_clv = stats.is_cleavable
@@ -156,6 +192,8 @@ def _coverage_row(ident: Identification, spectrum: Spectrum,
         'total_y_cov': ab.format_y() if ab else '',
         'total_cov': ab.format_total() if ab else '',
     })
+    if ca_header:
+        row[ca_header] = _fmt_dist(ca_value)
     if sp_names:
         sp_ints = stats.special_ion_intensities or {}
         for n in sp_names:
@@ -165,7 +203,8 @@ def _coverage_row(ident: Identification, spectrum: Spectrum,
 
 def _intensity_row(ident: Identification, spectrum: Spectrum,
                    stats: SpectrumStats, linker_name: str = None,
-                   sp_names: List[str] = None) -> dict:
+                   sp_names: List[str] = None,
+                   ca_header: str = None, ca_value: float = None) -> dict:
     row = _base_row(ident, spectrum, linker_name)
     alpha, beta = stats.alpha, stats.beta
     is_clv = stats.is_cleavable
@@ -191,6 +230,8 @@ def _intensity_row(ident: Identification, spectrum: Spectrum,
         'beta_b_int_combined': _fmt(b_cmb.intensity.b_sum) if b_cmb else '',
         'beta_y_int_combined': _fmt(b_cmb.intensity.y_sum) if b_cmb else '',
     })
+    if ca_header:
+        row[ca_header] = _fmt_dist(ca_value)
     if sp_names:
         sp_ints = stats.special_ion_intensities or {}
         for n in sp_names:

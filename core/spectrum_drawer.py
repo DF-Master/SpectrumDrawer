@@ -45,7 +45,8 @@ class SpectrumDrawer:
             linker_name: str = None,
             spec_types: Optional[List[int]] = None,
             special_ions: str = None,
-            special_ions_file: str = None):
+            special_ions_file: str = None,
+            pdb_path: str = None):
         """Run the full pipeline: load identifications → single-pass MGF scan → draw.
 
         Uses a single-pass approach for maximum speed with large MGF files:
@@ -107,6 +108,22 @@ class SpectrumDrawer:
                 else:
                     special_ion_list = None
 
+        # ── CA-CA 距离（PDB 结构，默认开启）──────────────────────
+        # 提供 PDB 后，cross-link 结果在 CSV 报告中附加交联位点 Cα-Cα 距离；
+        # 距离列始终保留（无结构/无匹配时留空），关闭 report.ca_distance 才移除。
+        structure = None
+        if self.config.ca_distance_enabled:
+            pdb_file = pdb_path or self.config.pdb_file
+            if pdb_file:
+                if os.path.isfile(pdb_file):
+                    from ..utils.pdb_reader import ProteinStructure
+                    structure = ProteinStructure(pdb_file)
+                    print(f'  Loaded protein structure: '
+                          f'{os.path.basename(pdb_file)} '
+                          f'({len(structure.chains)} chains)')
+                else:
+                    print(f'  WARNING: PDB structure file not found: {pdb_file}')
+
         # ── CSV 报告（默认开启，可通过 config report.enabled 关闭）──
         # 需在特殊离子解析之后创建，以便把 special_ion_list 传给报告器
         # （启用时强度 CSV 末尾追加 spint_<short_name> 列）。
@@ -117,6 +134,8 @@ class SpectrumDrawer:
                 coverage_filename=self.config.coverage_filename,
                 intensity_filename=self.config.intensity_filename,
                 special_ion_list=special_ion_list,
+                structure=structure,
+                ca_distance=self.config.ca_distance_enabled,
             )
 
         # ── load identifications & build target structures ────────

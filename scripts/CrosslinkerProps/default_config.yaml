@@ -1,0 +1,38 @@
+# CrosslinkerProps 默认配置
+# CLI 参数优先于本文件中的值（如 -o/--out-dir 覆盖 output.dir）
+
+# ── 数据 ──
+data:
+  csv: xlinkers.csv # 交联剂数据表（相对本文件所在目录；缺失时由内置列表自动生成）
+
+# ── 输出 ──
+output:
+  dir: test # 默认输出目录（相对本文件所在目录，已被 .gitignore 忽略）
+  csv_name: xlinkers_output.csv # 汇总 CSV（常见 + 测试 + 用户输入的交联剂）
+  plot_name: xlinkers_comparison.png # 比较图
+
+# ── 预测阈值（仅经验参考，用于给出定性提示）──
+prediction:
+  solubility: # 水溶性：由 cLogP 推断（cLogP 越小通常越易溶于水）
+    clogp_high_max: 1.0 # cLogP <= 1.0        -> 水溶性高
+    clogp_moderate_max: 3.5 # 1.0 < cLogP <= 3.0 -> 中等；> 3.0 -> 低
+  permeability: # 透膜性：由 tPSA 推断（被动扩散经验标准，Lipinski 类规则）
+    tpsa_good_max: 90.0 # tPSA <= 90 Å²        -> 透膜性良好
+    tpsa_poor_min: 140.0 # tPSA >= 140 Å²       -> 透膜性差
+
+# ── 比较图 ──
+plot:
+  figsize: [8.0, 6.0] # 图幅（英寸）
+  dpi: 300
+  font_family: Arial # 默认字体，系统无 Arial 时自动回退 sans-serif
+  ylim: [-3.0, 3.0] # 纵轴（cLogP）默认范围；数据超出时自动扩展
+  legend: false # 是否在图内绘制图例（CLI --legend 可开启）
+  title_fontsize: 22 # 标题字号（约默认 12pt 的 2 倍）
+  label_fontsize: 18 # 横/纵轴图注字号（默认 12pt 的 1.5 倍）
+  common_color: '#4C72B0' # 常见交联剂点色
+  test_color: '#DD8452' # 已收录但非常见（测试）交联剂点色
+  new_color: '#C44E52' # 用户本次输入的交联剂点色
+  good_zone_color: '#2CA02C' # 渐变底色：左下（好）
+  grad_mid_color: '#F0E442' # 渐变底色：中间色
+  bad_zone_color: '#D62728' # 渐变底色：右上（差）
+  zone_alpha: 0.15 # 渐变底色透明度（越大越明显）

@@ -36,6 +36,9 @@ test/output/
 # SequenceDrawer test output
 scripts/SequenceDrawer/test_output/
 
+# CrosslinkerProps test output
+scripts/CrosslinkerProps/test/
+
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb

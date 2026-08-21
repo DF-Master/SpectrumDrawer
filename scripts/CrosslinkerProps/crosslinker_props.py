@@ -44,7 +44,6 @@ DEFAULT_XLINKERS = [
     # ── 较常见的光交联剂 ──
     {'name': 'SDA', 'smiles': 'CC1(N=N1)CCC(ON(C(CC2)=O)C2=O)=O', 'common': 1},
     {'name': 'sulfo-SDA', 'smiles': 'CC1(N=N1)CCC(ON(C(CC2S(=O)(O)=O)=O)C2=O)=O', 'common': 1},
-    {'name': 'LC-SDA', 'smiles': 'CC1(N=N1)CCC(NCCCCCC(ON2C(C(S(=O)(O)=O)CC2=O)=O)=O)=O', 'common': 1},
     # ── 已收录的测试用新型交联剂（非常见）──
     {'name': 'BDG', 'smiles': 'CC1(N=N1)CNC(CCCC(NCC2(N=N2)C)=O)=O', 'common': 0},
     {'name': 'EBDA', 'smiles': 'CC1(N=N1)CCC(NCCNC(CCC2(N=N2)C)=O)=O', 'common': 0},

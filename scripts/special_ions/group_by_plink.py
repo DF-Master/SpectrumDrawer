@@ -60,8 +60,8 @@ if _PROJECT_ROOT not in sys.path:
 # 分组名 -> Peptide_Type 编码（pLink 报告实测：2=loop-link，3=cross-link）
 _GROUP_PT = {'regular': 0, 'mono_link': 1, 'cross_link': 3, 'loop_link': 2}
 
-# 原始报告文件名：result_YYYY.MM.DD.csv（排除 filtered / _matched 等衍生文件）
-_REPORT_RE = re.compile(r'^result_\d{4}\.\d{2}\.\d{2}\.csv$')
+# 原始报告文件名：result_YYYY.MM.DD.csv 或 result_YYYYMMDD_{agent}_{method}.csv（排除 filtered / _matched 等衍生文件）
+_REPORT_RE = re.compile(r'^result_(?:\d{4}\.\d{2}\.\d{2}|\d{8}_[A-Za-z0-9]+_[A-Za-z0-9]+)\.csv$')
 
 _TARGET_TD = '2'  # Target_Decoy = 2 为 target，其余为 decoy
 

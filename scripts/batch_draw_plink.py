@@ -281,6 +281,16 @@ class PlinkBatchProcessor:
         entries = self.parser.parse(ctx.plabel_path)
         entries = [e for e in entries if e.spectrum_type == spec_type]
 
+        # 过滤含未知残基（如 pLink 输出的 X/B/Z）的条目，
+        # 避免 compute_precursor_mz 因 KeyError('X') 导致整批崩溃。
+        from SpectrumDrawer.database import AA_MASS
+
+        def _seq_ok(seq):
+            return all(AA_MASS.get(aa) is not None for aa in seq)
+
+        entries = [e for e in entries
+                   if _seq_ok(e.alpha_seq) and (not e.beta_seq or _seq_ok(e.beta_seq))]
+
         # 去重（按 title 小写）
         dedup: dict = {}
         for e in entries:
